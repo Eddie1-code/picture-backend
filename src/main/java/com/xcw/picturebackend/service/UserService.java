@@ -2,6 +2,9 @@ package com.xcw.picturebackend.service;
 
 import com.xcw.picturebackend.model.entity.User;
 import com.baomidou.mybatisplus.extension.service.IService;
+import com.xcw.picturebackend.model.vo.LoginUserVO;
+
+import javax.servlet.http.HttpServletRequest;
 
 /**
 * @author 20339
@@ -20,6 +23,17 @@ public interface UserService extends IService<User> {
      */
     long userRegister(String userAccount, String userPassword, String checkPassword);
 
+
+    /**
+     * 用户登录
+     *
+     * @param userAccount  用户账户
+     * @param userPassword 用户密码
+     * @param request      HttpServletRequest 对象
+     * @return 登录成功的用户信息
+     */
+    LoginUserVO userLogin(String userAccount, String userPassword, HttpServletRequest request);
+
     /**
      * 获取加密后的密码
      *
@@ -27,4 +41,12 @@ public interface UserService extends IService<User> {
      * @return 加密后的密码
      */
     String getEncryptPassword(String userPassword);
+
+    /**
+     * 获取脱敏后的登录用户的视图对象
+     *
+     * @param user 用户实体
+     * @return 登录用户视图对象
+     */
+    LoginUserVO getLoginUserVO(User user);
 }

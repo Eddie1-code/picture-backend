@@ -1,5 +1,6 @@
 package com.xcw.picturebackend.service.impl;
 
+import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
@@ -8,10 +9,15 @@ import com.xcw.picturebackend.exception.ErrorCode;
 import com.xcw.picturebackend.exception.ThrowUtils;
 import com.xcw.picturebackend.model.entity.User;
 import com.xcw.picturebackend.model.enums.UserRoleEnum;
+import com.xcw.picturebackend.model.vo.LoginUserVO;
 import com.xcw.picturebackend.service.UserService;
 import com.xcw.picturebackend.mapper.UserMapper;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Bean;
 import org.springframework.stereotype.Service;
 import org.springframework.util.DigestUtils;
+
+import javax.servlet.http.HttpServletRequest;
 
 /**
  * @author 20339
@@ -19,6 +25,7 @@ import org.springframework.util.DigestUtils;
  * @createDate 2025-07-15 19:11:18
  */
 @Service
+@Slf4j
 public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         implements UserService {
 
@@ -73,6 +80,47 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         return user.getId(); //返回新用户的ID
     }
 
+
+    /**
+     * 用户登录
+     *
+     * @param userAccount  用户账户
+     * @param userPassword 用户密码
+     * @param request      HttpServletRequest 对象
+     * @return 登录成功的用户信息
+     */
+    @Override
+    public LoginUserVO userLogin(String userAccount, String userPassword, HttpServletRequest request) {
+        //1.校验参数
+        if(StrUtil.hasBlank(userAccount,userPassword)){
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "参数为空");
+        }
+        //改进写法：
+        ThrowUtils.throwIf(userAccount.length() < 4, ErrorCode.PARAMS_ERROR, "用户账号错误");
+        ThrowUtils.throwIf(userPassword.length() < 8, ErrorCode.PARAMS_ERROR, "用户密码错误");
+
+        //2.对用户传递的密码进行加密
+        String encryptedPassword = getEncryptPassword(userPassword);
+
+        //3.查询数据库中的用户是否存在
+        QueryWrapper<User> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("userAccount",userAccount)
+                    .eq("userPassword", encryptedPassword);
+        User user = this.baseMapper.selectOne(queryWrapper);
+        if(user == null){
+            log.info("user login failed, userAccount cannot match userPassword");
+            //用户不存在，抛异常
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户不存在或密码错误");
+        }
+
+        //4.保存用户的登录状态到Session中
+        //request.getSession().setAttribute("user_login_state", user);
+
+        return this.getLoginUserVO(user); //返回登录用户信息对象
+    }
+
+
+
     /**
      * 加密用户密码
      *
@@ -84,6 +132,23 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         //加盐，混淆密码
         final String SALT = "xcw";
         return DigestUtils.md5DigestAsHex((SALT + userPassword).getBytes());
+    }
+
+    /**
+     * 获取脱敏后的登录用户的视图对象
+     *
+     * @param user 用户实体
+     * @return 登录用户视图对象
+     */
+    @Override
+    public LoginUserVO getLoginUserVO(User user) {
+        if(user == null) {
+            return null; //如果用户不存在，返回null
+        }
+        LoginUserVO loginUserVO = new LoginUserVO();
+        //使用BeanUtil.copyProperties进行属性拷贝
+        BeanUtil.copyProperties(user, loginUserVO);
+        return loginUserVO;
     }
 }
 
