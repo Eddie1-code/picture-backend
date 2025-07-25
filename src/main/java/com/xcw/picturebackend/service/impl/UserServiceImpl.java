@@ -4,6 +4,7 @@ import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.xcw.picturebackend.constant.UserConstant;
 import com.xcw.picturebackend.exception.BusinessException;
 import com.xcw.picturebackend.exception.ErrorCode;
 import com.xcw.picturebackend.exception.ThrowUtils;
@@ -114,8 +115,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         }
 
         //4.保存用户的登录状态到Session中
-        //request.getSession().setAttribute("user_login_state", user);
-
+//        request.getSession().setAttribute("user_login_state", user);
+        request.getSession().setAttribute(UserConstant.USER_LOGIN_STATE, user);
         return this.getLoginUserVO(user); //返回登录用户信息对象
     }
 
@@ -150,6 +151,16 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         BeanUtil.copyProperties(user, loginUserVO);
         return loginUserVO;
     }
+
+    @Override
+    public User getLoginUser(HttpServletRequest request) {
+        Object userObj = request.getSession().getAttribute(UserConstant.USER_LOGIN_STATE);
+        User currentUser = (User) userObj;
+        ThrowUtils.throwIf(currentUser == null || currentUser.getId() == null  , ErrorCode.NOT_LOGIN_ERROR);
+        return null;
+    }
+
+
 }
 
 

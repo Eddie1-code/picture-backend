@@ -4,7 +4,9 @@ import com.xcw.picturebackend.common.BaseResponse;
 import com.xcw.picturebackend.common.ResultUtils;
 import com.xcw.picturebackend.exception.ErrorCode;
 import com.xcw.picturebackend.exception.ThrowUtils;
+import com.xcw.picturebackend.model.dto.UserLoginRequest;
 import com.xcw.picturebackend.model.dto.UserRegisterRequest;
+import com.xcw.picturebackend.model.vo.LoginUserVO;
 import com.xcw.picturebackend.service.UserService;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -12,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import javax.annotation.Resource;
+import javax.servlet.http.HttpServletRequest;
 
 @RestController
 @RequestMapping("/user")
@@ -33,5 +36,19 @@ public class UserController {
         long result = userService.userRegister(userAccount, userPassword, checkPassword);
 
         return ResultUtils.success(result);
+    }
+
+    /**
+     * 用户登录接口
+     */
+    @PostMapping("/login")
+    public BaseResponse<LoginUserVO> userLogin(@RequestBody UserLoginRequest userLoginRequest, HttpServletRequest request) {
+        ThrowUtils.throwIf(userLoginRequest == null, ErrorCode.PARAMS_ERROR);
+        String userAccount = userLoginRequest.getUserAccount();
+        String userPassword = userLoginRequest.getUserPassword();
+
+        LoginUserVO loginUserVO = userService.userLogin(userAccount, userPassword, request);
+
+        return ResultUtils.success(loginUserVO);
     }
 }

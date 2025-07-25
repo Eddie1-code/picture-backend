@@ -49,4 +49,12 @@ public interface UserService extends IService<User> {
      * @return 登录用户视图对象
      */
     LoginUserVO getLoginUserVO(User user);
+
+    /**
+     * 获取当前登录用户
+     *
+     * @param request 请求
+     * @return  已登录用户
+     */
+    User getLoginUser(HttpServletRequest request);
 }
