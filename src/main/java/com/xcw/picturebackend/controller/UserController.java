@@ -6,6 +6,7 @@ import com.xcw.picturebackend.exception.ErrorCode;
 import com.xcw.picturebackend.exception.ThrowUtils;
 import com.xcw.picturebackend.model.dto.UserLoginRequest;
 import com.xcw.picturebackend.model.dto.UserRegisterRequest;
+import com.xcw.picturebackend.model.entity.User;
 import com.xcw.picturebackend.model.vo.LoginUserVO;
 import com.xcw.picturebackend.service.UserService;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -51,4 +52,14 @@ public class UserController {
 
         return ResultUtils.success(loginUserVO);
     }
+
+    /**
+     * 获取当前登录用户信息
+     */
+    @PostMapping("/get/login")
+    public BaseResponse<LoginUserVO> getLoginUser(HttpServletRequest request) {
+        User loginUser = userService.getLoginUser(request);
+        return ResultUtils.success(userService.getLoginUserVO(loginUser));
+    }
+
 }

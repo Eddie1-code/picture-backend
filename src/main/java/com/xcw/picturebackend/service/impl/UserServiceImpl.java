@@ -154,13 +154,20 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
 
     @Override
     public User getLoginUser(HttpServletRequest request) {
+        //先判断是否登录
         Object userObj = request.getSession().getAttribute(UserConstant.USER_LOGIN_STATE);
         User currentUser = (User) userObj;
         ThrowUtils.throwIf(currentUser == null || currentUser.getId() == null  , ErrorCode.NOT_LOGIN_ERROR);
-        return null;
+
+        //从数据库中查询（追求性能的话，直接返回上述结果）
+        Long userId = currentUser.getId();
+        currentUser = this.getById(userId);
+        if(currentUser == null) {
+            log.info("getLoginUser failed, userId cannot match user");
+            throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR, "用户未登录或已注销");
+        }
+        return currentUser;
     }
-
-
 }
 
 
