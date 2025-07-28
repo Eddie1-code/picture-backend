@@ -152,6 +152,12 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         return loginUserVO;
     }
 
+    /**
+     * 获取当前登录用户
+     *
+     * @param request 请求
+     * @return 已登录用户
+     */
     @Override
     public User getLoginUser(HttpServletRequest request) {
         //先判断是否登录
@@ -167,6 +173,24 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
             throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR, "用户未登录或已注销");
         }
         return currentUser;
+    }
+
+    /**
+     * 用户注销
+     * @param request HttpServletRequest 对象
+     * @return 是否注销成功
+     */
+    @Override
+    public boolean userLogout(HttpServletRequest request) {
+        //先判断是否已经登录
+        Object userObj = request.getSession().getAttribute(UserConstant.USER_LOGIN_STATE);
+        if(userObj == null){
+            log.info("user logout failed, user not logged in");
+            throw new BusinessException(ErrorCode.OPERATION_ERROR, "用户未登录或已注销");
+        }
+        //如果登录了，清除Session中的用户信息（移除登录状态）
+        request.getSession().removeAttribute(UserConstant.USER_LOGIN_STATE);
+        return true; //返回注销成功
     }
 }
 
