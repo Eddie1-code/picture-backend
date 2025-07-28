@@ -51,7 +51,7 @@ public class AuthInterceptor {
             throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
         }
 
-        //1）判断当前方法要求的角色（mustRoleEnum）是否为管理员（UserRoleEnum.ADMIN）。
+        //1）判断当前方法要求的角色（ mustRoleEnum）是否为管理员（UserRoleEnum.ADMIN）。
         //2）如果是管理员权限要求，但当前登录用户的角色（userRoleEnum）不是管理员，则抛出无权限异
         // 即要求必须有管理员权限，但用户没有管理员权限，拒绝
         if (UserRoleEnum.ADMIN.equals(mustRoleEnum) && !UserRoleEnum.ADMIN.equals(userRoleEnum)) {

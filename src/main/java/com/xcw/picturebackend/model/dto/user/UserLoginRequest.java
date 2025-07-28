@@ -1,4 +1,4 @@
-package com.xcw.picturebackend.model.dto;
+package com.xcw.picturebackend.model.dto.user;
 
 import lombok.Data;
 

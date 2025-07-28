@@ -1,10 +1,15 @@
 package com.xcw.picturebackend.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.xcw.picturebackend.model.dto.user.UserQueryRequest;
 import com.xcw.picturebackend.model.entity.User;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.xcw.picturebackend.model.vo.LoginUserVO;
+import com.xcw.picturebackend.model.vo.UserVO;
 
+import javax.jws.soap.SOAPBinding;
 import javax.servlet.http.HttpServletRequest;
+import java.util.List;
 
 /**
 * @author 20339
@@ -66,4 +71,27 @@ public interface UserService extends IService<User> {
      */
     boolean userLogout(HttpServletRequest request);
 
+    /**
+     * 获取脱敏后的用户信息
+     *
+     * @param user 用户
+     * @return 用户实体
+     */
+    UserVO getUserVO(User user);
+
+    /**
+     * 获得脱敏后的用户列表
+     *
+     * @param userList 用户实体
+     * @return 脱敏后的用户视图对象
+     */
+    List<UserVO> getUserVOList(List<User> userList);
+
+    /**
+     * 获取查询条件的 QueryWrapper
+     *
+     * @param userQueryRequest 查询请求对象
+     * @return QueryWrapper<User> 查询条件包装器
+     */
+    QueryWrapper<User> getQueryWrapper(UserQueryRequest userQueryRequest);
 }
