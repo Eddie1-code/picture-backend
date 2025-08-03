@@ -241,10 +241,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         String userAccount = userQueryRequest.getUserAccount();
         String userProfile = userQueryRequest.getUserProfile();
         String userRole = userQueryRequest.getUserRole();
-        int current = userQueryRequest.getCurrent();
-        int pageSize = userQueryRequest.getPageSize();
-        String sortField = userQueryRequest.getSortField();
-        String sortOrder = userQueryRequest.getSortOrder();
+//        int current = userQueryRequest.getCurrent();
+//        int pageSize = userQueryRequest.getPageSize();
+//        String sortField = userQueryRequest.getSortField();
+//        String sortOrder = userQueryRequest.getSortOrder();
         QueryWrapper<User> queryWrapper = new QueryWrapper<>();
         //添加查询条件
         queryWrapper.eq(ObjUtil.isNotNull(id), "id", id);
