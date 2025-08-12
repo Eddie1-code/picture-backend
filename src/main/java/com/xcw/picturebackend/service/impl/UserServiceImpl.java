@@ -6,11 +6,14 @@ import cn.hutool.core.util.ObjUtil;
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.xcw.picturebackend.common.BaseResponse;
+import com.xcw.picturebackend.common.ResultUtils;
 import com.xcw.picturebackend.constant.UserConstant;
 import com.xcw.picturebackend.exception.BusinessException;
 import com.xcw.picturebackend.exception.ErrorCode;
 import com.xcw.picturebackend.exception.ThrowUtils;
 import com.xcw.picturebackend.model.dto.user.UserQueryRequest;
+import com.xcw.picturebackend.model.dto.user.UserUpdateRequest;
 import com.xcw.picturebackend.model.entity.User;
 import com.xcw.picturebackend.model.enums.UserRoleEnum;
 import com.xcw.picturebackend.model.vo.LoginUserVO;
@@ -101,7 +104,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
     @Override
     public LoginUserVO userLogin(String userAccount, String userPassword, HttpServletRequest request) {
         //1.校验参数
-        if(StrUtil.hasBlank(userAccount,userPassword)){
+        if (StrUtil.hasBlank(userAccount, userPassword)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "参数为空");
         }
         //改进写法：
@@ -113,10 +116,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
 
         //3.查询数据库中的用户是否存在
         QueryWrapper<User> queryWrapper = new QueryWrapper<>();
-        queryWrapper.eq("userAccount",userAccount)
-                    .eq("userPassword", encryptedPassword);
+        queryWrapper.eq("userAccount", userAccount)
+                .eq("userPassword", encryptedPassword);
         User user = this.baseMapper.selectOne(queryWrapper);
-        if(user == null){
+        if (user == null) {
             log.info("user login failed, userAccount cannot match userPassword");
             //用户不存在，抛异常
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户不存在或密码错误");
@@ -127,7 +130,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         request.getSession().setAttribute(UserConstant.USER_LOGIN_STATE, user);
         return this.getLoginUserVO(user); //返回登录用户信息对象
     }
-
 
 
     /**
@@ -151,7 +153,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
      */
     @Override
     public LoginUserVO getLoginUserVO(User user) {
-        if(user == null) {
+        if (user == null) {
             return null; //如果用户不存在，返回null
         }
         LoginUserVO loginUserVO = new LoginUserVO();
@@ -171,12 +173,12 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         //先判断是否登录
         Object userObj = request.getSession().getAttribute(UserConstant.USER_LOGIN_STATE);
         User currentUser = (User) userObj;
-        ThrowUtils.throwIf(currentUser == null || currentUser.getId() == null  , ErrorCode.NOT_LOGIN_ERROR);
+        ThrowUtils.throwIf(currentUser == null || currentUser.getId() == null, ErrorCode.NOT_LOGIN_ERROR);
 
         //从数据库中查询（追求性能的话，直接返回上述结果）
         Long userId = currentUser.getId();
         currentUser = this.getById(userId);
-        if(currentUser == null) {
+        if (currentUser == null) {
             log.info("getLoginUser failed, userId cannot match user");
             throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR, "用户未登录或已注销");
         }
@@ -185,6 +187,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
 
     /**
      * 用户注销
+     *
      * @param request HttpServletRequest 对象
      * @return 是否注销成功
      */
@@ -192,7 +195,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
     public boolean userLogout(HttpServletRequest request) {
         //先判断是否已经登录
         Object userObj = request.getSession().getAttribute(UserConstant.USER_LOGIN_STATE);
-        if(userObj == null){
+        if (userObj == null) {
             log.info("user logout failed, user not logged in");
             throw new BusinessException(ErrorCode.OPERATION_ERROR, "用户未登录或已注销");
         }
@@ -254,6 +257,55 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         queryWrapper.eq(StrUtil.isNotBlank(userRole), "userRole", userRole);
         return queryWrapper;
     }
+
+//    /**
+//     * 用户个人中心修改用户个人信息
+//     *
+//     * @param userUpdateRequest 用户更新请求对象
+//     * @param request           HttpServletRequest 对象
+//     * @return 是否更新成功
+//     */
+//    @Override
+//    public UserVO updateMyProfile(UserUpdateRequest userUpdateRequest, HttpServletRequest request) {
+//        if (userUpdateRequest == null) {
+//            throw new BusinessException(ErrorCode.PARAMS_ERROR, "更新请求不能为空");
+//        }
+//        //1.获取当前登录用户
+//        User currentUser = this.getLoginUser(request);
+//        if (currentUser == null) {
+//            throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR, "用户未登录或已注销");
+//        }
+//        //2.校验更新请求参数
+//        Long id = userUpdateRequest.getId();
+//        if (id == null || !id.equals(currentUser.getId())) {
+//            throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户ID不匹配");
+//        }
+//        String userName = userUpdateRequest.getUserName();
+//        String userPassword = userUpdateRequest.getUserPassword();
+//        String userAvatar = userUpdateRequest.getUserAvatar();
+//        String userProfile = userUpdateRequest.getUserProfile();
+//
+//        //3.更新用户信息
+//        User userToUpdate = new User();
+//        userToUpdate.setId(id);
+//        userToUpdate.setUserName(userName);
+//        if (StrUtil.isNotBlank(userPassword)) {
+//            //如果用户密码不为空，则加密后更新
+//            userToUpdate.setUserPassword(getEncryptPassword(userPassword));
+//        }
+//        userToUpdate.setUserAvatar(userAvatar);
+//        userToUpdate.setUserProfile(userProfile);
+//        boolean updateResult = this.updateById(userToUpdate);
+//        ThrowUtils.throwIf(!updateResult, ErrorCode.OPERATION_ERROR, "用户信息更新失败");
+//        //4.更新成功后，返回更新后的用户信息
+//        User updatedUser = this.getById(id);
+//        if (updatedUser == null) {
+//            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "更新后的用户信息不存在");
+//        }
+//        //返回脱敏后的用户信息
+//        return this.getUserVO(updatedUser);
+//    }
+
 
 }
 

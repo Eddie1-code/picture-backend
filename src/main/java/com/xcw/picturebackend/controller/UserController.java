@@ -164,5 +164,21 @@ public class UserController {
         userVOPage.setRecords(userVOList);
         return ResultUtils.success(userVOPage);
     }
+//
+//    /**
+//     * 用户中心更新用户信息
+//     */
+//    @PostMapping("/update/my")
+//    public BaseResponse<Boolean> updateMyProfile(@RequestBody UserUpdateRequest userUpdateRequest,
+//                                                 HttpServletRequest request) {
+//        ThrowUtils.throwIf(userUpdateRequest == null, ErrorCode.PARAMS_ERROR);
+//        User loginUser = userService.getLoginUser(request);
+//        ThrowUtils.throwIf(loginUser == null, ErrorCode.NOT_LOGIN_ERROR);
+//        userUpdateRequest.setId(loginUser.getId());
+//        // 不允许用户自己修改userRole
+//        userUpdateRequest.setUserRole(loginUser.getUserRole());
+//        UserVO updatedUser = userService.updateMyProfile(userUpdateRequest, request);
+//        return ResultUtils.success(true);
+//    }
 
 }

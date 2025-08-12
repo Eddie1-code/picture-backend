@@ -1,7 +1,9 @@
 package com.xcw.picturebackend.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.xcw.picturebackend.common.BaseResponse;
 import com.xcw.picturebackend.model.dto.user.UserQueryRequest;
+import com.xcw.picturebackend.model.dto.user.UserUpdateRequest;
 import com.xcw.picturebackend.model.entity.User;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.xcw.picturebackend.model.vo.LoginUserVO;
@@ -94,4 +96,12 @@ public interface UserService extends IService<User> {
      * @return QueryWrapper<User> 查询条件包装器
      */
     QueryWrapper<User> getQueryWrapper(UserQueryRequest userQueryRequest);
+
+//    /**
+//     * 用户中心更新用户信息
+//     *
+//     * @param userUpdateRequest 用户更新请求
+//     * @return  更新后的用户
+//     */
+//    public UserVO updateMyProfile(UserUpdateRequest userUpdateRequest, HttpServletRequest request);
 }
