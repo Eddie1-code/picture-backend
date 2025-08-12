@@ -1,0 +1,49 @@
+server:
+  port: 8123
+  servlet:
+    context-path: /api
+
+
+spring:
+  application:
+    name: picture-backend
+    #数据库连接池配置
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/picture?useUnicode=true&characterEncoding=utf-8&serverTimezone=UTC
+    username: root
+    password: 123456
+  #开放更大的文件上传体积
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      #max-request-size: 10MB
+
+#mybatis-plus配置
+mybatis-plus:
+  configuration:
+    #开启驼峰命名
+    map-underscore-to-camel-case: false
+    # 仅在开发环境下打印日志
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    # 逻辑删除配置
+  global-config:
+    db-config:
+        # 逻辑删除字段
+        logic-delete-field: isDelete
+        # 逻辑未删除值(默认为0)
+        logic-not-delete-value: 0
+        # 逻辑删除值(默认为1)
+        logic-delete-value: 1
+
+#接口文档Knife4j配置
+knife4j:
+  enable: true
+  openapi:
+    title: 接口文档
+    version: v1.0
+    group:
+      default:
+        api-rule: package
+        api-rule-resources:
+            - com.xcw.picturebackend.controller
