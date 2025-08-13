@@ -104,4 +104,14 @@ public interface UserService extends IService<User> {
 //     * @return  更新后的用户
 //     */
 //    public UserVO updateMyProfile(UserUpdateRequest userUpdateRequest, HttpServletRequest request);
+
+    /**
+     * 是否为管理员
+     *
+     * @param user
+     * @return
+     */
+    boolean isAdmin(User user);
+
+
 }

@@ -4,6 +4,11 @@ import lombok.Data;
 
 import java.io.Serializable;
 
+/**
+ * 图片上传请求
+ * 用于接收前端传来的图片上传信息
+ * 包括图片的 id（用于修改）
+ */
 @Data
 public class PictureUploadRequest implements Serializable {
 
