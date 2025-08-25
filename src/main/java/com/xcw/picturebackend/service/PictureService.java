@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.xcw.picturebackend.model.dto.picture.PictureQueryRequest;
+import com.xcw.picturebackend.model.dto.picture.PictureReviewRequest;
 import com.xcw.picturebackend.model.dto.picture.PictureUploadRequest;
 import com.xcw.picturebackend.model.entity.Picture;
 import com.xcw.picturebackend.model.entity.User;
@@ -63,5 +64,22 @@ public interface PictureService extends IService<Picture> {
      * @param picture 图片实体
      */
     void validPicture(Picture picture);
+
+    /**
+     * 图片审核
+     *
+     * @param pictureReviewRequest 图片审核请求
+     * @param loginUser            已登录用户
+     */
+    void doPictureReview(PictureReviewRequest pictureReviewRequest, User loginUser);
+
+    /**
+     * 填充图片审核相关参数
+     *
+     * @param picture   图片实体
+     * @param loginUser 已登录用户
+     */
+    void fillReviewParams(Picture picture, User loginUser);
+
 }
 
