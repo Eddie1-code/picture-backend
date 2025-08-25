@@ -80,17 +80,7 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
         String uploadPathPrefix = String.format("public/%s", loginUser.getId());
         UploadPictureResult uploadPictureResult = fileManager.uploadPicture(multipartFile, uploadPathPrefix);
         // 构造要入库的图片信息
-        Picture picture = getPicture(loginUser, uploadPictureResult, pictureId);
-        // 补充审核参数
-        this.fillReviewParams(picture, loginUser);
-        // 调用 MyBatis Plus 提供的 saveOrUpdate 方法兼容创建和更新操作
-        boolean result = this.saveOrUpdate(picture);
-        ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR, "图片上传失败");
-        return PictureVO.objToVo(picture);
-    }
-
-
-    public static Picture getPicture(User loginUser, UploadPictureResult uploadPictureResult, Long pictureId) {
+        //Picture picture = getPicture(loginUser, uploadPictureResult, pictureId);
         Picture picture = new Picture();
         picture.setUrl(uploadPictureResult.getUrl());
         picture.setName(uploadPictureResult.getPicName());
@@ -100,7 +90,8 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
         picture.setPicScale(uploadPictureResult.getPicScale());
         picture.setPicFormat(uploadPictureResult.getPicFormat());
         picture.setUserId(loginUser.getId());
-
+        // 补充审核参数
+        this.fillReviewParams(picture, loginUser);
         //操作数据库
         // 如果 pictureId 不为空，表示更新，否则是新增
         if (pictureId != null) {
@@ -108,7 +99,10 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
             picture.setId(pictureId);
             picture.setEditTime(new Date());
         }
-        return picture;
+        // 调用 MyBatis Plus 提供的 saveOrUpdate 方法兼容创建和更新操作
+        boolean result = this.saveOrUpdate(picture);
+        ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR, "图片上传失败");
+        return PictureVO.objToVo(picture);
     }
 
 
@@ -260,6 +254,7 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
 
     @Override
     public void doPictureReview(PictureReviewRequest pictureReviewRequest, User loginUser) {
+        ThrowUtils.throwIf(pictureReviewRequest == null, ErrorCode.PARAMS_ERROR);
         Long id = pictureReviewRequest.getId();
         Integer reviewStatus = pictureReviewRequest.getReviewStatus();
         PictureReviewStatusEnum reviewStatusEnum = PictureReviewStatusEnum.getEnumByValue(reviewStatus);
@@ -274,6 +269,8 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "请勿重复审核");
         }
         // 更新审核状态
+        // 此处没有直接根据oldPicture更新，而是新建了一个对象，防止误修改其他字段，且效率更高
+        // oldPicture中的字段过多，updateById时会将所有字段都更新一遍，而新建对象只会更新指定的字段
         Picture updatePicture = new Picture();
         BeanUtils.copyProperties(pictureReviewRequest, updatePicture);
         updatePicture.setReviewerId(loginUser.getId());
@@ -302,8 +299,6 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
             picture.setReviewStatus(PictureReviewStatusEnum.REVIEWING.getValue());
         }
     }
-
-
 }
 
 

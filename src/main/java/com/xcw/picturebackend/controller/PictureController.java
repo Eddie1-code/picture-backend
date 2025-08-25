@@ -85,7 +85,7 @@ public class PictureController {
      * @return BaseResponse<Boolean>
      */
     @PostMapping("/update")
-    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
+    //@AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public BaseResponse<Boolean> updatePicture(@RequestBody PictureUpdateRequest pictureUpdateRequest, HttpServletRequest request) {
         if (pictureUpdateRequest == null || pictureUpdateRequest.getId() <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -220,7 +220,7 @@ public class PictureController {
     }
 
     /**
-     * 图片审核
+     * 审核图片
      *
      * @param pictureReviewRequest 图片审核请求
      * @param request              请求
