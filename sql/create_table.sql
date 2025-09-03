@@ -1,3 +1,4 @@
+
 -- 用户表
 create table if not exists user
 (
