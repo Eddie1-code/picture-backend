@@ -10,6 +10,9 @@ import com.xcw.picturebackend.exception.BusinessException;
 import com.xcw.picturebackend.exception.ErrorCode;
 import com.xcw.picturebackend.exception.ThrowUtils;
 import com.xcw.picturebackend.manager.FileManager;
+import com.xcw.picturebackend.manager.upload.FilePictureUpload;
+import com.xcw.picturebackend.manager.upload.PictureUploadTemplate;
+import com.xcw.picturebackend.manager.upload.UrlPictureUpload;
 import com.xcw.picturebackend.model.dto.file.UploadPictureResult;
 import com.xcw.picturebackend.model.dto.picture.PictureQueryRequest;
 import com.xcw.picturebackend.model.dto.picture.PictureReviewRequest;
@@ -22,6 +25,7 @@ import com.xcw.picturebackend.model.vo.UserVO;
 import com.xcw.picturebackend.service.PictureService;
 import com.xcw.picturebackend.mapper.PictureMapper;
 import com.xcw.picturebackend.service.UserService;
+import org.apache.tomcat.util.http.fileupload.FileUpload;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -43,22 +47,28 @@ import java.util.stream.Collectors;
 public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
         implements PictureService {
 
-    @Resource
-    private FileManager fileManager;
+//    @Resource
+//    private FileManager fileManager;
 
     @Resource
     private UserService userService;
 
+    @Resource
+    private FilePictureUpload filePictureUpload;
+
+    @Resource
+    private UrlPictureUpload urlPictureUpload;
+
     /**
      * 上传图片
      *
-     * @param multipartFile        上传的文件
+     * @param inputSource          文件输入源，可以是 MultipartFile 或 String（URL）
      * @param pictureUploadRequest 上传请求参数
      * @param loginUser            当前登录用户
      * @return 图片信息
      */
     @Override
-    public PictureVO uploadPicture(MultipartFile multipartFile, PictureUploadRequest pictureUploadRequest, User loginUser) {
+    public PictureVO uploadPicture(Object inputSource, PictureUploadRequest pictureUploadRequest, User loginUser) {
         // 校验参数
         ThrowUtils.throwIf(loginUser == null, ErrorCode.NO_AUTH_ERROR);
         // 用于判断是新增还是更新图片
@@ -78,7 +88,12 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
         // 上传图片，得到信息
         // 按照用户 id 划分目录
         String uploadPathPrefix = String.format("public/%s", loginUser.getId());
-        UploadPictureResult uploadPictureResult = fileManager.uploadPicture(multipartFile, uploadPathPrefix);
+        // 根据 inputSource 的类型选择上传方式
+        PictureUploadTemplate pictureUploadTemplate = filePictureUpload;
+        if(inputSource instanceof String) {
+            pictureUploadTemplate = urlPictureUpload;
+        }
+        UploadPictureResult uploadPictureResult = pictureUploadTemplate.uploadPicture(inputSource, uploadPathPrefix);
         // 构造要入库的图片信息
         //Picture picture = getPicture(loginUser, uploadPictureResult, pictureId);
         Picture picture = new Picture();

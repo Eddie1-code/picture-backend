@@ -23,6 +23,12 @@ import java.util.List;
 
 @Service
 @Slf4j
+
+/**
+ * 文件服务
+ * @deprecated 已废弃，改为使用 upload 包的模板方法优化
+ */
+@Deprecated
 public class FileManager {
 
     @Resource
