@@ -217,11 +217,18 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
      * @param request 请求
      * @return 脱敏后的图片信息
      */
+    // 获取图片详情（优先热点缓存）
     @Override
     public PictureVO getPictureVO(Picture picture, HttpServletRequest request) {
-        // 对象转封装类
+        // 统计访问量
+        pictureCacheManager.recordPictureAccess(picture.getId().toString());
+        // 优先从热点缓存读取
+        PictureVO cachedVO = pictureCacheManager.getPictureWithHotCache(picture.getId().toString());
+        if (cachedVO != null) {
+            return cachedVO;
+        }
+        // 未命中热点缓存则正常脱敏处理
         PictureVO pictureVO = PictureVO.objToVo(picture);
-        // 关联查询用户信息
         Long userId = picture.getUserId();
         if (userId != null && userId > 0) {
             User user = userService.getById(userId);
@@ -230,6 +237,7 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
         }
         return pictureVO;
     }
+
 
     /**
      * 分页获取图片封装
@@ -418,6 +426,8 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
 
         return pictureVOPage;
     }
+
+
 
 
 }
