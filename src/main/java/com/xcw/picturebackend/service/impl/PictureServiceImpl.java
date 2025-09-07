@@ -10,6 +10,7 @@ import com.xcw.picturebackend.exception.BusinessException;
 import com.xcw.picturebackend.exception.ErrorCode;
 import com.xcw.picturebackend.exception.ThrowUtils;
 import com.xcw.picturebackend.manager.FileManager;
+import com.xcw.picturebackend.manager.PictureCacheManager;
 import com.xcw.picturebackend.manager.upload.FilePictureUpload;
 import com.xcw.picturebackend.manager.upload.PictureUploadTemplate;
 import com.xcw.picturebackend.manager.upload.UrlPictureUpload;
@@ -33,6 +34,7 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 import org.springframework.beans.BeanUtils;
+import org.springframework.core.SpringVersion;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -66,6 +68,9 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
 
     @Resource
     private UrlPictureUpload urlPictureUpload;
+
+    @Resource
+    private PictureCacheManager pictureCacheManager;
 
     /**
      * 上传图片
@@ -389,6 +394,31 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
         }
         return uploadCount;
     }
+
+    @Override
+    public Page<PictureVO> listPictureVOByPageWithCache(PictureQueryRequest pictureQueryRequest, HttpServletRequest request) {
+        long current = pictureQueryRequest.getCurrent();
+        long size = pictureQueryRequest.getPageSize();
+        ThrowUtils.throwIf(size > 20, ErrorCode.PARAMS_ERROR);
+        pictureQueryRequest.setReviewStatus(PictureReviewStatusEnum.PASS.getValue());
+
+        String cacheKey = pictureCacheManager.buildCacheKey(pictureQueryRequest);
+
+        Page<PictureVO> cachedPage = pictureCacheManager.getPageFromCache(cacheKey);
+        if (cachedPage != null) {
+            return cachedPage;
+        }
+
+        // 查询数据库
+        Page<Picture> picturePage = this.page(new Page<>(current, size), this.getQueryWrapper(pictureQueryRequest));
+        Page<PictureVO> pictureVOPage = this.getPictureVOPage(picturePage, request);
+
+        // 更新缓存
+        pictureCacheManager.putPageToCache(cacheKey, pictureVOPage);
+
+        return pictureVOPage;
+    }
+
 
 }
 

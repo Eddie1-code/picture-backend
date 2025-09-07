@@ -48,19 +48,6 @@ public class PictureController {
     @Resource
     private PictureService pictureService;
 
-    @Resource
-    private StringRedisTemplate stringRedisTemplate;
-
-    /**
-     * 本地缓存
-     */
-    private final Cache<String, String> LOCAL_CACHE =
-            Caffeine.newBuilder().initialCapacity(1024)
-                    .maximumSize(10000L) // 最大缓存数为 10000
-                    // 缓存 5 分钟移除
-                    .expireAfterWrite(5L, TimeUnit.MINUTES)
-                    .build();
-
 
     /**
      * 上传图片（可重新上传）
@@ -204,64 +191,7 @@ public class PictureController {
         return ResultUtils.success(pictureService.getPictureVOPage(picturePage, request));
     }
 
-    /**
-     * 分页获取图片列表（封装类,有缓存）
-     */
-    @PostMapping("/list/page/vo/cache")
-    public BaseResponse<Page<PictureVO>> listPictureVOByPageWithCache(@RequestBody PictureQueryRequest pictureQueryRequest,
-                                                             HttpServletRequest request) {
-        long current = pictureQueryRequest.getCurrent();
-        long size = pictureQueryRequest.getPageSize();
-        // 限制爬虫
-        ThrowUtils.throwIf(size > 20, ErrorCode.PARAMS_ERROR);
-        // 普通用户默认只能看到审核通过的数据
-        pictureQueryRequest.setReviewStatus(PictureReviewStatusEnum.PASS.getValue());
 
-        // 这里可以添加缓存逻辑
-        // 查询缓存，如果缓存命中则直接返回缓存结果，否则查询数据库并将结果存入缓存
-
-        // 构建缓存的 key
-        String queryCondition = JSONUtil.toJsonStr(pictureQueryRequest);
-        // 使用 MD5 作为缓存的 key，避免 key 过长
-        String hashKey =  DigestUtils.md5DigestAsHex(queryCondition.getBytes());
-        String cacheKey = String.format("picture:listPictureVOByPage:%s", hashKey);
-
-
-        // 1. 查询本地缓存（Caffeine）
-        String cachedValue = LOCAL_CACHE.getIfPresent(cacheKey);
-        if (cachedValue != null) {
-            // 如果本地缓存命中，直接返回结果
-            Page<PictureVO> cachedPage = JSONUtil.toBean(cachedValue, Page.class);
-            return ResultUtils.success(cachedPage);
-        }
-        // 2. 本地缓存未命中，查询 Redis，从Redis分布式缓存中获取数据
-        ValueOperations<String, String> opsForValue = stringRedisTemplate.opsForValue();
-        cachedValue = opsForValue.get(cacheKey);
-        if (cachedValue != null) {
-            // 如果缓存命中，更新本地缓存，并返回结果
-            LOCAL_CACHE.put(cacheKey, cachedValue);
-            Page<PictureVO> cachedPage = JSONUtil.toBean(cachedValue, Page.class);
-            return ResultUtils.success(cachedPage);
-        }
-
-        // 3. 若都没命中，则查询数据库
-        Page<Picture> picturePage = pictureService.page(new Page<>(current, size),
-                pictureService.getQueryWrapper(pictureQueryRequest));
-        // 将查询结果存入缓存
-        Page<PictureVO> pictureVOPage = pictureService.getPictureVOPage(picturePage, request);
-
-        // 4. 更新缓存
-        // 4.1 更新Redis缓存
-        String cacheValue = JSONUtil.toJsonStr(pictureVOPage);
-        //设置过期时间为 5-10 分钟，加随机值是为了防止缓存雪崩
-        int cacheExpireTime = 300 + RandomUtil.randomInt(0, 300);
-        opsForValue.set(cacheKey, cacheValue, cacheExpireTime, TimeUnit.SECONDS);
-        // 4.2 更新本地缓存
-        LOCAL_CACHE.put(cacheKey, cacheValue);
-
-        // 获取封装类
-        return ResultUtils.success(pictureVOPage);
-    }
 
     /**
      * 编辑图片（给用户使用）
@@ -346,5 +276,16 @@ public class PictureController {
         int uploadCount = pictureService.uploadPictureByBatch(pictureUploadByBatchRequest, loginUser);
         return ResultUtils.success(uploadCount);
     }
+
+    /**
+     * 分页获取图片列表（封装类,有缓存）
+     */
+    @PostMapping("/list/page/vo/cache")
+    public BaseResponse<Page<PictureVO>> listPictureVOByPageWithCache(@RequestBody PictureQueryRequest pictureQueryRequest,
+                                                                      HttpServletRequest request) {
+        Page<PictureVO> page = pictureService.listPictureVOByPageWithCache(pictureQueryRequest, request);
+        return ResultUtils.success(page);
+    }
+
 
 }
