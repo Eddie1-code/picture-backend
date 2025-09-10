@@ -40,6 +40,11 @@ public class CosClientConfig {
      */
     private String bucket;
 
+    /**
+     * CDN域名
+     */
+    private String cdnDomain;
+
     @Bean
     public COSClient cosClient() {
         // 初始化用户身份信息(secretId, secretKey)

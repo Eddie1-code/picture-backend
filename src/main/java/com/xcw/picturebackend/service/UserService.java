@@ -1,15 +1,12 @@
 package com.xcw.picturebackend.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.xcw.picturebackend.common.BaseResponse;
 import com.xcw.picturebackend.model.dto.user.UserQueryRequest;
-import com.xcw.picturebackend.model.dto.user.UserUpdateRequest;
 import com.xcw.picturebackend.model.entity.User;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.xcw.picturebackend.model.vo.LoginUserVO;
 import com.xcw.picturebackend.model.vo.UserVO;
 
-import javax.jws.soap.SOAPBinding;
 import javax.servlet.http.HttpServletRequest;
 import java.util.List;
 

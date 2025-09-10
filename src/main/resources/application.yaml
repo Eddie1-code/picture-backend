@@ -2,7 +2,10 @@ server:
   port: 8123
   servlet:
     context-path: /api
-
+    # cookie 30 天过期
+    session:
+      cookie:
+        max-age: 2592000
 
 spring:
   application:
@@ -13,17 +16,24 @@ spring:
     url: jdbc:mysql://localhost:3306/picture?useUnicode=true&characterEncoding=utf-8&serverTimezone=UTC
     username: root
     password: 123456
+  #Redis配置
   redis:
     database: 1
     host: 127.0.0.1
     port: 6379
     password: 123456
     connect-timeout: 5000
+  #session配置
+    # session 配置
+  session:
+    store-type: redis
+    # session 30 天过期
+    timeout: 2592000
   #开放更大的文件上传体积
   servlet:
     multipart:
-      max-file-size: 10MB
       #max-request-size: 10MB
+      max-file-size: 10MB
 
 #mybatis-plus配置
 mybatis-plus:

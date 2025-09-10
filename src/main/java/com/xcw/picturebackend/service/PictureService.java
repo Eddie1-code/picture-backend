@@ -101,5 +101,13 @@ public interface PictureService extends IService<Picture> {
      * @return 图片分页列表
      */
     Page<PictureVO> listPictureVOByPageWithCache(PictureQueryRequest pictureQueryRequest, HttpServletRequest request);
+
+    /**
+     * 删除图片文件（包括数据库记录和存储桶中的文件）
+     *
+     * @param oldPicture 需要删除的图片实体
+     */
+    void clearPictureFile(Picture oldPicture);
+
 }
 
