@@ -96,3 +96,11 @@ INSERT INTO `user` VALUES (1945506895712337922, 'eddie', 'a6d8ccf352674a2a2d255f
 INSERT INTO `user` VALUES (1949873190859730945, 'jackson', 'a6d8ccf352674a2a2d255f649d8c58d1', 'JackSon', 'https://img.alicdn.com/sns_logo/i2/4093866517/O1CN01MI2Ti71y0qAyfmDIj_!!4093866517-0-userheaderimgshow.jpg', '为者常成，行者常至！', 'user', '2025-07-29 00:42:50', '2025-07-29 00:42:50', '2025-08-17 18:08:24', 0);
 
 SET FOREIGN_KEY_CHECKS = 1;
+
+-- 添加新列
+ALTER TABLE picture
+    ADD COLUMN spaceId bigint null comment '空间 id（为空表示公共空间）';
+
+-- 创建索引
+CREATE INDEX idx_spaceId ON picture (spaceId);
+

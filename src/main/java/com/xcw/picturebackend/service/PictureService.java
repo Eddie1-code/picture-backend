@@ -3,14 +3,10 @@ package com.xcw.picturebackend.service;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.IService;
-import com.xcw.picturebackend.model.dto.picture.PictureQueryRequest;
-import com.xcw.picturebackend.model.dto.picture.PictureReviewRequest;
-import com.xcw.picturebackend.model.dto.picture.PictureUploadByBatchRequest;
-import com.xcw.picturebackend.model.dto.picture.PictureUploadRequest;
+import com.xcw.picturebackend.model.dto.picture.*;
 import com.xcw.picturebackend.model.entity.Picture;
 import com.xcw.picturebackend.model.entity.User;
 import com.xcw.picturebackend.model.vo.PictureVO;
-import org.springframework.web.multipart.MultipartFile;
 
 import javax.servlet.http.HttpServletRequest;
 
@@ -108,6 +104,28 @@ public interface PictureService extends IService<Picture> {
      * @param oldPicture 需要删除的图片实体
      */
     void clearPictureFile(Picture oldPicture);
+
+    /**
+     * 删除图片（包括数据库记录和存储桶中的文件）
+     * @param pictureId 图片id
+     * @param loginUser 已登录用户
+     */
+    void deletePicture(long pictureId, User loginUser);
+
+    /**
+     * 编辑图片信息
+     * @param pictureEditRequest 图片编辑请求
+     * @param loginUser 已登录用户
+     */
+    void editPicture(PictureEditRequest pictureEditRequest, User loginUser);
+
+
+    /**
+     * 检查空间图片权限
+     * @param loginUser 已登录用户
+     * @param picture 图片实体
+     */
+    void checkPictureAuth(User loginUser, Picture picture);
 
 }
 
