@@ -49,4 +49,10 @@ public class UploadPictureResult {
      */
     private String picFormat;
 
+    /**
+     * 图片主色调（十六进制颜色值）
+     */
+    private String picColor;
+
+
 }

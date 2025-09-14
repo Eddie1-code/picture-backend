@@ -9,6 +9,7 @@ import com.xcw.picturebackend.model.entity.User;
 import com.xcw.picturebackend.model.vo.PictureVO;
 
 import javax.servlet.http.HttpServletRequest;
+import java.util.List;
 
 /**
 * @author 20339
@@ -127,5 +128,13 @@ public interface PictureService extends IService<Picture> {
      */
     void checkPictureAuth(User loginUser, Picture picture);
 
+    /**
+     * 通过颜色搜索图片
+     * @param spaceId 空间id
+     * @param picColor 颜色值
+     * @param loginUser 已登录用户
+     * @return 图片列表
+     */
+    List<PictureVO> searchPictureByColor(Long spaceId, String picColor, User loginUser);
 }
 
