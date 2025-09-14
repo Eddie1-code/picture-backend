@@ -1,8 +1,11 @@
 package com.xcw.picturebackend.controller;
 
+import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.xcw.picturebackend.annotation.AuthCheck;
+import com.xcw.picturebackend.api.imagesearch.model.ImageSearchResult;
+import com.xcw.picturebackend.api.imagesearch.sub.ImageSearchApiFacade;
 import com.xcw.picturebackend.common.BaseResponse;
 import com.xcw.picturebackend.common.DeleteRequest;
 import com.xcw.picturebackend.common.ResultUtils;
@@ -27,6 +30,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -180,16 +184,16 @@ public class PictureController {
 
         // 空间权限校验
         Long spaceId = pictureQueryRequest.getSpaceId();
-        if(spaceId == null) {
+        if (spaceId == null) {
             // 公开的公共图库（即普通用户只能看到审核通过的数据）
             pictureQueryRequest.setReviewStatus(PictureReviewStatusEnum.PASS.getValue());
             pictureQueryRequest.setNullSpaceId(true); // 只查询 spaceId 为 null 的图片
-        }else{
+        } else {
             // 私有空间
             User loginUser = userService.getLoginUser(request);
             Space space = spaceService.getById(spaceId); // 校验空间是否存在
             ThrowUtils.throwIf(space == null, ErrorCode.NOT_FOUND_ERROR, "空间不存在");
-            if(!loginUser.getId().equals((space.getUserId()))){
+            if (!loginUser.getId().equals((space.getUserId()))) {
                 throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "无权限访问该空间");
             }
         }
@@ -275,5 +279,30 @@ public class PictureController {
         return ResultUtils.success(page);
     }
 
+    /**
+     * 以图搜图
+     */
+    @PostMapping("/search/picture")
+    public BaseResponse<List<ImageSearchResult>> searchPictureByPictureIsSo(@RequestBody SearchPictureByPictureRequest searchPictureByPictureRequest) {
+        ThrowUtils.throwIf(searchPictureByPictureRequest == null, ErrorCode.PARAMS_ERROR);
+        Long pictureId = searchPictureByPictureRequest.getPictureId();
+        ThrowUtils.throwIf(pictureId == null || pictureId <= 0, ErrorCode.PARAMS_ERROR);
+        Picture oldPicture = pictureService.getById(pictureId);
+        ThrowUtils.throwIf(oldPicture == null, ErrorCode.NOT_FOUND_ERROR);
+        List<ImageSearchResult> resultList = new ArrayList<>();
+        // 这个 start 是控制查询多少页, 每页是 20 条
+        int start = 0;
+        while (resultList.size() <= 50) {
+            List<ImageSearchResult> tempList = ImageSearchApiFacade.searchImage(
+                    StrUtil.isNotBlank(oldPicture.getUrl()) ? oldPicture.getUrl() : oldPicture.getUrl(), start
+            );
+            if (tempList.isEmpty()) {
+                break;
+            }
+            resultList.addAll(tempList);
+            start += tempList.size();
+        }
+        return ResultUtils.success(resultList);
+    }
 
 }
