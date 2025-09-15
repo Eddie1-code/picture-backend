@@ -12,10 +12,10 @@ import javax.servlet.http.HttpServletRequest;
 import java.util.List;
 
 /**
-* @author 20339
-* @description 针对表【picture(图片)】的数据库操作Service
-* @createDate 2025-08-10 13:27:02
-*/
+ * @author 20339
+ * @description 针对表【picture(图片)】的数据库操作Service
+ * @createDate 2025-08-10 13:27:02
+ */
 public interface PictureService extends IService<Picture> {
     /**
      * 上传图片
@@ -57,7 +57,7 @@ public interface PictureService extends IService<Picture> {
     Page<PictureVO> getPictureVOPage(Page<Picture> picturePage, HttpServletRequest request);
 
     /**
-     *  校验图片信息
+     * 校验图片信息
      *
      * @param picture 图片实体
      */
@@ -74,7 +74,7 @@ public interface PictureService extends IService<Picture> {
     /**
      * 填充图片审核相关参数
      *
-     * @param picture  图片审核请求
+     * @param picture   图片审核请求
      * @param loginUser 已登录用户
      */
     void fillReviewParams(Picture picture, User loginUser);
@@ -83,7 +83,7 @@ public interface PictureService extends IService<Picture> {
      * 批量抓取和创建图片
      *
      * @param pictureUploadByBatchRequest 批量上传请求
-     * @param loginUser  已登录用户
+     * @param loginUser                   已登录用户
      * @return 成功创建的图片数
      */
     Integer uploadPictureByBatch(
@@ -93,8 +93,9 @@ public interface PictureService extends IService<Picture> {
 
     /**
      * 分页获取图片列表（封装类,有缓存）
+     *
      * @param pictureQueryRequest 图片查询请求
-     * @param request 请求
+     * @param request             请求
      * @return 图片分页列表
      */
     Page<PictureVO> listPictureVOByPageWithCache(PictureQueryRequest pictureQueryRequest, HttpServletRequest request);
@@ -108,6 +109,7 @@ public interface PictureService extends IService<Picture> {
 
     /**
      * 删除图片（包括数据库记录和存储桶中的文件）
+     *
      * @param pictureId 图片id
      * @param loginUser 已登录用户
      */
@@ -115,26 +117,37 @@ public interface PictureService extends IService<Picture> {
 
     /**
      * 编辑图片信息
+     *
      * @param pictureEditRequest 图片编辑请求
-     * @param loginUser 已登录用户
+     * @param loginUser          已登录用户
      */
     void editPicture(PictureEditRequest pictureEditRequest, User loginUser);
 
 
     /**
      * 检查空间图片权限
+     *
      * @param loginUser 已登录用户
-     * @param picture 图片实体
+     * @param picture   图片实体
      */
     void checkPictureAuth(User loginUser, Picture picture);
 
     /**
      * 通过颜色搜索图片
-     * @param spaceId 空间id
-     * @param picColor 颜色值
+     *
+     * @param spaceId   空间id
+     * @param picColor  颜色值
      * @param loginUser 已登录用户
      * @return 图片列表
      */
     List<PictureVO> searchPictureByColor(Long spaceId, String picColor, User loginUser);
+
+    /**
+     * 批量编辑图片信息
+     *
+     * @param pictureEditByBatchRequest 批量编辑请求
+     * @param loginUser                 已登录用户
+     */
+    void editPictureByBatch(PictureEditByBatchRequest pictureEditByBatchRequest, User loginUser);
 }
 
