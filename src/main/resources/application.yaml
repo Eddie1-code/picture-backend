@@ -7,24 +7,24 @@ server:
       cookie:
         max-age: 2592000
 
+
 spring:
   application:
     name: picture-backend
-    #数据库连接池配置
+    # 数据库连接池配置
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://localhost:3306/picture?useUnicode=true&characterEncoding=utf-8&serverTimezone=UTC
     username: root
     password: 123456
-  #Redis配置
+  # Redis配置
   redis:
     database: 1
     host: 127.0.0.1
     port: 6379
     password: 123456
     connect-timeout: 5000
-  #session配置
-    # session 配置
+  # session 配置
   session:
     store-type: redis
     # session 30 天过期
@@ -34,6 +34,33 @@ spring:
     multipart:
       #max-request-size: 10MB
       max-file-size: 10MB
+  # 空间图片分表
+  shardingsphere:
+    datasource:
+      names: picture
+      picture:
+        type: com.zaxxer.hikari.HikariDataSource
+        driver-class-name: com.mysql.cj.jdbc.Driver
+        url: jdbc:mysql://localhost:3306/picture
+        username: root
+        password: 123456
+    rules:
+      sharding:
+        tables:
+          picture:
+            actual-data-nodes: picture.picture  # 动态分表
+            table-strategy:
+              standard:
+                sharding-column: spaceId
+                sharding-algorithm-name: picture_sharding_algorithm  # 使用自定义分片算法
+        sharding-algorithms:
+          picture_sharding_algorithm:
+            type: CLASS_BASED
+            props:
+              strategy: standard
+              algorithmClassName: com.xcw.picturebackend.manager.sharding.PictureShardingAlgorithm
+    props:
+      sql-show: true
 
 #mybatis-plus配置
 mybatis-plus:
@@ -44,13 +71,15 @@ mybatis-plus:
     log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
     # 逻辑删除配置
   global-config:
+    # 开启sql执行分析插件(阻止全表更新与删除)
+    enable-sql-runner: true
     db-config:
-        # 逻辑删除字段
-        logic-delete-field: isDelete
-        # 逻辑未删除值(默认为0)
-        logic-not-delete-value: 0
-        # 逻辑删除值(默认为1)
-        logic-delete-value: 1
+      # 逻辑删除字段
+      logic-delete-field: isDelete
+      # 逻辑未删除值(默认为0)
+      logic-not-delete-value: 0
+      # 逻辑删除值(默认为1)
+      logic-delete-value: 1
 
 #接口文档Knife4j配置
 knife4j:
@@ -62,4 +91,4 @@ knife4j:
       default:
         api-rule: package
         api-rule-resources:
-            - com.xcw.picturebackend.controller
+          - com.xcw.picturebackend.controller
