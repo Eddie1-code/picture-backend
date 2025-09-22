@@ -177,6 +177,9 @@ public class PictureController {
         User loginUser = userService.getLoginUser(request);
         List<String> permissionList = spaceUserAuthManager.getPermissionList(space, loginUser);
         PictureVO pictureVO = pictureService.getPictureVO(picture, request);
+//        User user = userService.getById(loginUser.getId());
+//        UserVO userVO = userService.getUserVO(user);
+//        pictureVO.setUser(userVO);
         pictureVO.setPermissionList(permissionList);
         // 获取封装类
         return ResultUtils.success(pictureVO);
