@@ -105,10 +105,16 @@ public interface UserService extends IService<User> {
     /**
      * 是否为管理员
      *
-     * @param user
-     * @return
+     * @param user 用户
+     * @return 是否为管理员
      */
     boolean isAdmin(User user);
 
-
+    /**
+     * 用户兑换会员
+     * @param user 当前用户
+     * @param vipCode 会员兑换码
+     * @return 是否兑换成功
+     */
+    boolean exchangeVip(User user, String vipCode);
 }

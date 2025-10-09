@@ -1,7 +1,9 @@
-package com.xcw.picturebackend.model.entity;
+package generator.domain;
 
-import com.baomidou.mybatisplus.annotation.*;
-
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
 import java.io.Serializable;
 import java.util.Date;
 import lombok.Data;
@@ -16,7 +18,7 @@ public class User implements Serializable {
     /**
      * id
      */
-    @TableId(type = IdType.ASSIGN_ID)
+    @TableId(type = IdType.AUTO)
     private Long id;
 
     /**
@@ -50,21 +52,6 @@ public class User implements Serializable {
     private String userRole;
 
     /**
-     * 会员过期时间
-     */
-    private Date vipExpireTime;
-
-    /**
-     * 会员兑换码
-     */
-    private String vipCode;
-
-    /**
-     * 会员编号
-     */
-    private String vipNumber;
-
-    /**
      * 编辑时间
      */
     private Date editTime;
@@ -82,9 +69,23 @@ public class User implements Serializable {
     /**
      * 是否删除
      */
-    @TableLogic
     private Integer isDelete;
 
-    @TableField(exist = false) // 标记该字段不参与数据库表的映射
-    private static final long serialVersionUID = 1L; // 序列化版本号，用于类的序列化和反序列化
+    /**
+     * 会员过期时间
+     */
+    private Date vipExpireTime;
+
+    /**
+     * 会员兑换码
+     */
+    private String vipCode;
+
+    /**
+     * 会员编号
+     */
+    private Long vipNumber;
+
+    @TableField(exist = false)
+    private static final long serialVersionUID = 1L;
 }

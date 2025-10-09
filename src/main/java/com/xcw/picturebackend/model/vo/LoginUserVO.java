@@ -1,5 +1,6 @@
 package com.xcw.picturebackend.model.vo;
 
+import java.io.Serializable;
 import java.util.Date;
 import lombok.Data;
 
@@ -7,7 +8,7 @@ import lombok.Data;
  * 已登录用户视图（脱敏）
  */
 @Data
-public class LoginUserVO {
+public class LoginUserVO implements Serializable {
     /**
      * id
      */
@@ -42,6 +43,21 @@ public class LoginUserVO {
      * 用户角色：user/admin
      */
     private String userRole;
+
+    /**
+     * 会员过期时间
+     */
+    private Date vipExpireTime;
+
+    /**
+     * 会员兑换码
+     */
+    private String vipCode;
+
+    /**
+     * 会员编号
+     */
+    private String vipNumber;
 
     /**
      * 编辑时间

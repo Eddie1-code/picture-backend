@@ -44,3 +44,9 @@ create table if not exists space_user
     INDEX idx_spaceId (spaceId),                    -- 提升按空间查询的性能
     INDEX idx_userId (userId)                       -- 提升按用户查询的性能
 ) comment '空间用户关联' collate = utf8mb4_unicode_ci;
+
+-- 拓展用户表，新增会员功能
+ALTER TABLE `user`
+    ADD COLUMN vipExpireTime DATETIME NULL COMMENT '会员过期时间',
+    ADD COLUMN vipCode VARCHAR(128) NULL COMMENT '会员兑换码',
+    ADD COLUMN vipNumber BIGINT NULL COMMENT '会员编号';
