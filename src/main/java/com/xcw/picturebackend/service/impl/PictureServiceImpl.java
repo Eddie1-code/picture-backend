@@ -710,6 +710,10 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND_ERROR));
         // 校验权限，已经改为使用注解鉴权
         //checkPictureAuth(loginUser, picture);
+        
+        // 图片校验
+        validatePictureForOutPainting(picture);
+        
         // 构造请求参数
         CreateOutPaintingTaskRequest taskRequest = new CreateOutPaintingTaskRequest();
         CreateOutPaintingTaskRequest.Input input = new CreateOutPaintingTaskRequest.Input();
@@ -718,6 +722,46 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
         BeanUtil.copyProperties(createPictureOutPaintingTaskRequest, taskRequest);
         // 创建任务
         return aliYunAiApi.createOutPaintingTask(taskRequest);
+    }
+
+
+    /**
+     * 校验图片是否符合扩图要求
+     * @param picture 图片实体
+     */
+    private void validatePictureForOutPainting(Picture picture) {
+        // 校验图片格式
+        String picFormat = picture.getPicFormat();
+        if (picFormat == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "图片格式未知");
+        }
+        List<String> supportedFormats = Arrays.asList("JPG", "JPEG", "PNG", "HEIF", "WEBP");
+        if (!supportedFormats.contains(picFormat.toUpperCase())) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "不支持的图片格式，仅支持JPG、JPEG、PNG、HEIF、WEBP");
+        }
+        
+        // 校验图片大小（不超过10MB）
+        Long picSize = picture.getPicSize();
+        if (picSize != null && picSize > 10 * 1024 * 1024) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "图片大小不能超过10MB");
+        }
+        
+        // 校验图片分辨率
+        Integer picWidth = picture.getPicWidth();
+        Integer picHeight = picture.getPicHeight();
+        if (picWidth == null || picHeight == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "图片分辨率信息缺失");
+        }
+        
+        // 校验单边长度
+        if (picWidth < 512 || picWidth > 4096 || picHeight < 512 || picHeight > 4096) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "图片单边长度必须在512-4096像素之间");
+        }
+        
+        // 校验整体分辨率
+        if (picWidth * picHeight < 512 * 512 || picWidth * picHeight > 4096 * 4096) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "图片分辨率必须在512×512到4096×4096之间");
+        }
     }
 
 
