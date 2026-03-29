@@ -1,15 +1,18 @@
 package com.xcw.picturebackend.controller;
 
 import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.io.FileUtil;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.xcw.picturebackend.annotation.AuthCheck;
 import com.xcw.picturebackend.common.BaseResponse;
 import com.xcw.picturebackend.common.DeleteRequest;
 import com.xcw.picturebackend.common.ResultUtils;
+import com.xcw.picturebackend.config.CosClientConfig;
 import com.xcw.picturebackend.constant.UserConstant;
 import com.xcw.picturebackend.exception.BusinessException;
 import com.xcw.picturebackend.exception.ErrorCode;
 import com.xcw.picturebackend.exception.ThrowUtils;
+import com.xcw.picturebackend.manager.CosManager;
 import com.xcw.picturebackend.model.dto.user.*;
 import com.xcw.picturebackend.model.entity.User;
 import com.xcw.picturebackend.model.vo.LoginUserVO;
@@ -17,10 +20,13 @@ import com.xcw.picturebackend.model.vo.UserVO;
 import com.xcw.picturebackend.service.UserService;
 import org.springframework.beans.BeanUtils;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
+import java.io.File;
 import java.util.List;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/user")
@@ -28,6 +34,12 @@ public class UserController {
 
     @Resource
     private UserService userService;
+
+    @Resource
+    private CosManager cosManager;
+
+    @Resource
+    private CosClientConfig cosClientConfig;
 
     /**
      * 用户注册接口
@@ -38,7 +50,7 @@ public class UserController {
         String userAccount = userRegisterRequest.getUserAccount();
         String userPassword = userRegisterRequest.getUserPassword();
         String checkPassword = userRegisterRequest.getCheckPassword();
-        
+
         long result = userService.userRegister(userAccount, userPassword, checkPassword);
 
         return ResultUtils.success(result);
@@ -87,7 +99,7 @@ public class UserController {
         User user = new User();
         BeanUtil.copyProperties(userAddRequest, user);
         //默认密码 12345678
-        final  String DEFAULT_PASSWORD = "12345678";
+        final String DEFAULT_PASSWORD = "12345678";
         String encryptPassword = userService.getEncryptPassword(DEFAULT_PASSWORD);
         user.setUserPassword(encryptPassword);
         boolean result = userService.save(user);
@@ -100,7 +112,7 @@ public class UserController {
      */
     @GetMapping("/get")
     @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
-    public BaseResponse<User> getUserById(long id){
+    public BaseResponse<User> getUserById(long id) {
         ThrowUtils.throwIf(id <= 0, ErrorCode.PARAMS_ERROR);
         User user = userService.getById(id);
         ThrowUtils.throwIf(user == null, ErrorCode.NOT_FOUND_ERROR);
@@ -179,21 +191,66 @@ public class UserController {
         boolean result = userService.exchangeVip(loginUser, vipCode);
         return ResultUtils.success(result);
     }
-//
-//    /**
-//     * 用户中心更新用户信息
-//     */
-//    @PostMapping("/update/my")
-//    public BaseResponse<Boolean> updateMyProfile(@RequestBody UserUpdateRequest userUpdateRequest,
-//                                                 HttpServletRequest request) {
-//        ThrowUtils.throwIf(userUpdateRequest == null, ErrorCode.PARAMS_ERROR);
-//        User loginUser = userService.getLoginUser(request);
-//        ThrowUtils.throwIf(loginUser == null, ErrorCode.NOT_LOGIN_ERROR);
-//        userUpdateRequest.setId(loginUser.getId());
-//        // 不允许用户自己修改userRole
-//        userUpdateRequest.setUserRole(loginUser.getUserRole());
-//        UserVO updatedUser = userService.updateMyProfile(userUpdateRequest, request);
-//        return ResultUtils.success(true);
-//    }
+
+    /**
+     * 用户中心更新用户信息
+     */
+    @PostMapping("/update/my")
+    public BaseResponse<Boolean> updateMyProfile(@RequestBody UserUpdateRequest userUpdateRequest,
+                                                 HttpServletRequest request) {
+        ThrowUtils.throwIf(userUpdateRequest == null, ErrorCode.PARAMS_ERROR);
+        User loginUser = userService.getLoginUser(request);
+        ThrowUtils.throwIf(loginUser == null, ErrorCode.NOT_LOGIN_ERROR);
+        userUpdateRequest.setId(loginUser.getId());
+        // 不允许用户自己修改userRole
+        userUpdateRequest.setUserRole(loginUser.getUserRole());
+        UserVO updatedUser = userService.updateMyProfile(userUpdateRequest, request);
+        return ResultUtils.success(true);
+    }
+
+    /**
+     * 上传用户头像
+     */
+    @PostMapping("/upload/avatar")
+    public BaseResponse<String> uploadAvatar(@RequestPart("file") MultipartFile multipartFile, HttpServletRequest request) {
+        // 检查用户是否登录
+        User loginUser = userService.getLoginUser(request);
+        ThrowUtils.throwIf(loginUser == null, ErrorCode.NOT_LOGIN_ERROR);
+
+        // 检查文件是否为空
+        if (multipartFile == null || multipartFile.isEmpty()) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "文件不能为空");
+        }
+
+        // 生成唯一文件名
+        String originalFilename = multipartFile.getOriginalFilename();
+        String suffix = FileUtil.getSuffix(originalFilename);
+        String filename = UUID.randomUUID().toString() + "." + suffix;
+
+        // 构建文件路径
+        String filepath = String.format("/avatar/%s/%s", loginUser.getId(), filename);
+        File file = null;
+
+        try {
+            // 上传文件
+            file = File.createTempFile(filename, null);
+            multipartFile.transferTo(file);
+            cosManager.putObject(filepath, file);
+
+            // 构建完整的 URL
+            // 构建完整的 URL
+            String fullUrl = cosClientConfig.getCdnDomain() + filepath;
+
+            // 返回完整的 URL
+            return ResultUtils.success(fullUrl);
+        } catch (Exception e) {
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "上传失败");
+        } finally {
+            if (file != null) {
+                // 删除临时文件
+                file.delete();
+            }
+        }
+    }
 
 }

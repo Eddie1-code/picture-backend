@@ -16,6 +16,7 @@ import com.xcw.picturebackend.exception.ErrorCode;
 import com.xcw.picturebackend.exception.ThrowUtils;
 import com.xcw.picturebackend.manager.auth.StpKit;
 import com.xcw.picturebackend.model.dto.user.UserQueryRequest;
+import com.xcw.picturebackend.model.dto.user.UserUpdateRequest;
 import com.xcw.picturebackend.model.entity.User;
 import com.xcw.picturebackend.model.dto.user.VipCode;
 import com.xcw.picturebackend.model.enums.UserRoleEnum;
@@ -269,6 +270,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         return queryWrapper;
     }
 
+
     @Override
     public boolean isAdmin(User user) {
         return user != null && UserRoleEnum.ADMIN.getValue().equals(user.getUserRole());
@@ -287,7 +289,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
     /**
      * 兑换会员
      *
-     * @param user  当前用户
+     * @param user    当前用户
      * @param vipCode 会员兑换码
      * @return 是否兑换成功
      */
@@ -303,6 +305,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         updateUserVipInfo(user, targetCode.getCode());
         return true;
     }
+
     /**
      * 校验兑换码并标记为已使用
      */
@@ -326,6 +329,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
             fileLock.unlock();
         }
     }
+
     /**
      * 读取兑换码文件
      */
@@ -339,6 +343,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "系统繁忙");
         }
     }
+
     /**
      * 写入兑换码文件
      */
@@ -351,6 +356,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "系统繁忙");
         }
     }
+
     /**
      * 更新用户会员信息
      */
@@ -370,55 +376,66 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         }
     }
     // endregion ------- 以下代码为用户兑换会员功能 --------
+
+
+    /**
+     * 用户个人中心修改用户个人信息
+     *
+     * @param userUpdateRequest 用户更新请求对象
+     * @param request           HttpServletRequest 对象
+     * @return 是否更新成功
+     */
+    @Override
+    public UserVO updateMyProfile(UserUpdateRequest userUpdateRequest, HttpServletRequest request) {
+        if (userUpdateRequest == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "更新请求不能为空");
+        }
+        //1.获取当前登录用户
+        User currentUser = this.getLoginUser(request);
+        if (currentUser == null) {
+            throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR, "用户未登录或已注销");
+        }
+        //2.校验更新请求参数
+        Long id = userUpdateRequest.getId();
+        if (id == null || !id.equals(currentUser.getId())) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户ID不匹配");
+        }
+        String userName = userUpdateRequest.getUserName();
+        String userPassword = userUpdateRequest.getUserPassword();
+        String userAvatar = userUpdateRequest.getUserAvatar();
+        String userProfile = userUpdateRequest.getUserProfile();
+
+        //3.更新用户信息
+        User userToUpdate = new User();
+        userToUpdate.setId(id);
+        userToUpdate.setUserName(userName);
+        // 如果用户提供了新密码，则校验并更新；若未提供或为空，则保留原密码（从数据库读取）
+        if (StrUtil.isNotBlank(userPassword)) {
+            // 校验密码长度
+            ThrowUtils.throwIf(userPassword.length() < 8, ErrorCode.PARAMS_ERROR, "密码长度小于8");
+            userToUpdate.setUserPassword(getEncryptPassword(userPassword));
+        } else {
+            // 保留原密码：为了保险起见，明确设置为当前数据库中的密码（避免因框架配置问题将其置为 null）
+            User existing = this.getById(id);
+            if (existing != null && existing.getUserPassword() != null) {
+                userToUpdate.setUserPassword(existing.getUserPassword());
+            }
+        }
+        userToUpdate.setUserAvatar(userAvatar);
+        userToUpdate.setUserProfile(userProfile);
+        boolean updateResult = this.updateById(userToUpdate);
+        ThrowUtils.throwIf(!updateResult, ErrorCode.OPERATION_ERROR, "用户信息更新失败");
+        //4.更新成功后，返回更新后的用户信息
+        User updatedUser = this.getById(id);
+        if (updatedUser == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "更新后的用户信息不存在");
+        }
+        //返回脱敏后的用户信息
+        return this.getUserVO(updatedUser);
+    }
 }
 
-//    /**
-//     * 用户个人中心修改用户个人信息
-//     *
-//     * @param userUpdateRequest 用户更新请求对象
-//     * @param request           HttpServletRequest 对象
-//     * @return 是否更新成功
-//     */
-//    @Override
-//    public UserVO updateMyProfile(UserUpdateRequest userUpdateRequest, HttpServletRequest request) {
-//        if (userUpdateRequest == null) {
-//            throw new BusinessException(ErrorCode.PARAMS_ERROR, "更新请求不能为空");
-//        }
-//        //1.获取当前登录用户
-//        User currentUser = this.getLoginUser(request);
-//        if (currentUser == null) {
-//            throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR, "用户未登录或已注销");
-//        }
-//        //2.校验更新请求参数
-//        Long id = userUpdateRequest.getId();
-//        if (id == null || !id.equals(currentUser.getId())) {
-//            throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户ID不匹配");
-//        }
-//        String userName = userUpdateRequest.getUserName();
-//        String userPassword = userUpdateRequest.getUserPassword();
-//        String userAvatar = userUpdateRequest.getUserAvatar();
-//        String userProfile = userUpdateRequest.getUserProfile();
-//
-//        //3.更新用户信息
-//        User userToUpdate = new User();
-//        userToUpdate.setId(id);
-//        userToUpdate.setUserName(userName);
-//        if (StrUtil.isNotBlank(userPassword)) {
-//            //如果用户密码不为空，则加密后更新
-//            userToUpdate.setUserPassword(getEncryptPassword(userPassword));
-//        }
-//        userToUpdate.setUserAvatar(userAvatar);
-//        userToUpdate.setUserProfile(userProfile);
-//        boolean updateResult = this.updateById(userToUpdate);
-//        ThrowUtils.throwIf(!updateResult, ErrorCode.OPERATION_ERROR, "用户信息更新失败");
-//        //4.更新成功后，返回更新后的用户信息
-//        User updatedUser = this.getById(id);
-//        if (updatedUser == null) {
-//            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "更新后的用户信息不存在");
-//        }
-//        //返回脱敏后的用户信息
-//        return this.getUserVO(updatedUser);
-//    }
+
 
 
 
