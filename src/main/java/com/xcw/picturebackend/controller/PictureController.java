@@ -30,6 +30,7 @@ import com.xcw.picturebackend.model.vo.PictureVO;
 import com.xcw.picturebackend.service.PictureService;
 import com.xcw.picturebackend.service.SpaceService;
 import com.xcw.picturebackend.service.UserService;
+import com.xcw.picturebackend.manager.AiTaskTimeoutManager;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -59,6 +60,9 @@ public class PictureController {
 
     @Resource
     private AliYunAiApi aliYunAiApi;
+
+    @Resource
+    private AiTaskTimeoutManager aiTaskTimeoutManager;
     @Autowired
     private SpaceUserAuthManager spaceUserAuthManager;
 
@@ -389,6 +393,10 @@ public class PictureController {
     public BaseResponse<GetOutPaintingTaskResponse> getPictureOutPaintingTask(String taskId) {
         ThrowUtils.throwIf(StrUtil.isBlank(taskId), ErrorCode.PARAMS_ERROR);
         GetOutPaintingTaskResponse task = aliYunAiApi.getOutPaintingTask(taskId);
+
+        // 超时判定：超过 10 分钟则强制把任务标记为 FAILED（覆盖阿里云返回状态）
+        aiTaskTimeoutManager.applyOutPaintingTimeoutIfNeeded(taskId, task, System.currentTimeMillis());
+
         return ResultUtils.success(task);
     }
 
