@@ -34,33 +34,34 @@ spring:
     multipart:
       #max-request-size: 10MB
       max-file-size: 10MB
+  # 移除以下配置
   # 空间图片分表
-  shardingsphere:
-    datasource:
-      names: picture
-      picture:
-        type: com.zaxxer.hikari.HikariDataSource
-        driver-class-name: com.mysql.cj.jdbc.Driver
-        url: jdbc:mysql://localhost:3306/picture
-        username: root
-        password: 123456
-    rules:
-      sharding:
-        tables:
-          picture:
-            actual-data-nodes: picture.picture  # 动态分表
-            table-strategy:
-              standard:
-                sharding-column: spaceId
-                sharding-algorithm-name: picture_sharding_algorithm  # 使用自定义分片算法
-        sharding-algorithms:
-          picture_sharding_algorithm:
-            type: CLASS_BASED
-            props:
-              strategy: standard
-              algorithmClassName: com.xcw.picturebackend.manager.sharding.PictureShardingAlgorithm
-    props:
-      sql-show: true
+  # shardingsphere:
+  #   datasource:
+  #     names: picture
+  #     picture:
+  #       type: com.zaxxer.hikari.HikariDataSource
+  #       driver-class-name: com.mysql.cj.jdbc.Driver
+  #       url: jdbc:mysql://localhost:3306/picture
+  #       username: root
+  #       password: 123456
+  #   rules:
+  #     sharding:
+  #       tables:
+  #         picture:
+  #           actual-data-nodes: picture.picture  # 动态分表
+  #           table-strategy:
+  #             standard:
+  #               sharding-column: spaceId
+  #               sharding-algorithm-name: picture_sharding_algorithm  # 使用自定义分片算法
+  #       sharding-algorithms:
+  #         picture_sharding_algorithm:
+  #           type: CLASS_BASED
+  #           props:
+  #             strategy: standard
+  #             algorithmClassName: com.xcw.picturebackend.manager.sharding.PictureShardingAlgorithm
+  #   props:
+  #     sql-show: true
 
 #mybatis-plus配置
 mybatis-plus:
