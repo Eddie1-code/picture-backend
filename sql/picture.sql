@@ -104,3 +104,4 @@ ALTER TABLE picture
 -- 创建索引
 CREATE INDEX idx_spaceId ON picture (spaceId);
 
+

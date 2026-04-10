@@ -93,3 +93,9 @@ knife4j:
         api-rule: package
         api-rule-resources:
           - com.xcw.picturebackend.controller
+
+# Sa-Token 配置（启用 Header Token，便于浏览器多标签页独立登录）
+sa-token:
+  token-name: satoken
+  is-read-cookie: false
+  is-read-header: true

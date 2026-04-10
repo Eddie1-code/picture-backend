@@ -17,6 +17,7 @@ import com.xcw.picturebackend.model.dto.user.*;
 import com.xcw.picturebackend.model.entity.User;
 import com.xcw.picturebackend.model.vo.LoginUserVO;
 import com.xcw.picturebackend.model.vo.UserVO;
+import com.xcw.picturebackend.manager.auth.StpKit;
 import com.xcw.picturebackend.service.UserService;
 import org.springframework.beans.BeanUtils;
 import org.springframework.web.bind.annotation.*;
@@ -24,6 +25,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
 import java.io.File;
 import java.util.List;
 import java.util.UUID;
@@ -60,12 +62,19 @@ public class UserController {
      * 用户登录接口
      */
     @PostMapping("/login")
-    public BaseResponse<LoginUserVO> userLogin(@RequestBody UserLoginRequest userLoginRequest, HttpServletRequest request) {
+    public BaseResponse<LoginUserVO> userLogin(@RequestBody UserLoginRequest userLoginRequest,
+                                               HttpServletRequest request,
+                                               HttpServletResponse response) {
         ThrowUtils.throwIf(userLoginRequest == null, ErrorCode.PARAMS_ERROR);
         String userAccount = userLoginRequest.getUserAccount();
         String userPassword = userLoginRequest.getUserPassword();
 
         LoginUserVO loginUserVO = userService.userLogin(userAccount, userPassword, request);
+        // 把当前 token 放在响应头，前端可按标签页存储到 sessionStorage
+        response.setHeader(StpKit.SPACE.getTokenName(), StpKit.SPACE.getTokenValue());
+        // 同时返回标准化的 token 名和值，前端可动态读取并回传
+        response.setHeader("x-sa-token-name", StpKit.SPACE.getTokenName());
+        response.setHeader("x-sa-token-value", StpKit.SPACE.getTokenValue());
 
         return ResultUtils.success(loginUserVO);
     }

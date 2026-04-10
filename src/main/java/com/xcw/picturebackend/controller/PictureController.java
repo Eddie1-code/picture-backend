@@ -213,8 +213,6 @@ public class PictureController {
         long size = pictureQueryRequest.getPageSize();
         // 限制爬虫
         ThrowUtils.throwIf(size > 20, ErrorCode.PARAMS_ERROR);
-        // 普通用户默认只能看到审核通过的数据
-        pictureQueryRequest.setReviewStatus(PictureReviewStatusEnum.PASS.getValue());
 
         // 空间权限校验
         Long spaceId = pictureQueryRequest.getSpaceId();
@@ -225,6 +223,8 @@ public class PictureController {
         } else {
             boolean hasPermission = StpKit.SPACE.hasPermission(SpaceUserPermissionConstant.PICTURE_VIEW);
             ThrowUtils.throwIf(!hasPermission, ErrorCode.NO_AUTH_ERROR);
+            // 空间内图片由空间权限控制，不强制按审核状态过滤
+            pictureQueryRequest.setReviewStatus(null);
             // 已经改为使用注解鉴权
 //            // 私有空间
 //            User loginUser = userService.getLoginUser(request);

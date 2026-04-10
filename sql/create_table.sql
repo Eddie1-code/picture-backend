@@ -50,3 +50,4 @@ ALTER TABLE `user`
     ADD COLUMN vipExpireTime DATETIME NULL COMMENT '会员过期时间',
     ADD COLUMN vipCode VARCHAR(128) NULL COMMENT '会员兑换码',
     ADD COLUMN vipNumber BIGINT NULL COMMENT '会员编号';
+

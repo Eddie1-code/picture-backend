@@ -17,6 +17,7 @@ public class CorsConfig implements WebMvcConfigurer {
                 .allowedOriginPatterns("*")
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
-                .exposedHeaders("*");
+                // 显式暴露鉴权相关响应头，确保浏览器可读取
+                .exposedHeaders("satoken", "satoken-space", "x-sa-token-name", "x-sa-token-value");
     }
 }

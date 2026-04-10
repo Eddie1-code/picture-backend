@@ -3,6 +3,7 @@ package com.xcw.picturebackend.manager.websocket;
 
 import cn.hutool.core.util.ObjUtil;
 import cn.hutool.core.util.StrUtil;
+import com.xcw.picturebackend.manager.auth.StpKit;
 import com.xcw.picturebackend.manager.auth.SpaceUserAuthManager;
 import com.xcw.picturebackend.manager.auth.model.SpaceUserPermissionConstant;
 import com.xcw.picturebackend.model.entity.Picture;
@@ -25,6 +26,7 @@ import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * @author 2340129326 许灿炜
@@ -61,7 +63,38 @@ public class WsHandshakeInterceptor implements HandshakeInterceptor {
                 log.error("缺少图片参数，拒绝握手");
                 return false;
             }
-            User loginUser = userService.getLoginUser(servletRequest);
+
+            // 先走常规鉴权（cookie/header）
+            User loginUser = null;
+            try {
+                loginUser = userService.getLoginUser(servletRequest);
+            } catch (Exception ignore) {
+                // ignore，走 query token 兜底
+            }
+            // 若常规鉴权失败，则尝试从 query 中获取 token（适配前端 WebSocket）
+            if (ObjUtil.isEmpty(loginUser)) {
+                String tokenName = servletRequest.getParameter("tokenName");
+                String tokenValue = servletRequest.getParameter("tokenValue");
+                // 优先读取固定参数，其次尝试读取 tokenName 对应参数
+                if (StrUtil.isBlank(tokenValue) && StrUtil.isNotBlank(tokenName)) {
+                    tokenValue = servletRequest.getParameter(tokenName);
+                }
+                if (StrUtil.isBlank(tokenValue)) {
+                    // 再兜底：读取当前 StpLogic 的 token-name 对应参数
+                    tokenValue = servletRequest.getParameter(StpKit.SPACE.getTokenName());
+                }
+                if (StrUtil.isNotBlank(tokenValue)) {
+                    try {
+                        Object loginId = StpKit.SPACE.getLoginIdByToken(tokenValue);
+                        if (ObjUtil.isNotEmpty(loginId)) {
+                            Long userId = Long.valueOf(String.valueOf(loginId));
+                            loginUser = userService.getById(userId);
+                        }
+                    } catch (Exception e) {
+                        log.warn("WebSocket query token 校验失败", e);
+                    }
+                }
+            }
             if (ObjUtil.isEmpty(loginUser)) {
                 log.error("用户未登录，拒绝握手");
                 return false;

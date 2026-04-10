@@ -64,6 +64,12 @@ import java.util.stream.Collectors;
 public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
         implements PictureService {
 
+    /**
+     * 按色搜图最低相似度阈值（0~1）。
+     * 数值越高，结果越严格。
+     */
+    private static final double COLOR_SEARCH_SIMILARITY_THRESHOLD = 0.70D;
+
 //    @Resource
 //    private FileManager fileManager;
 
@@ -311,17 +317,33 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
         // 优先从热点缓存读取
         PictureVO cachedVO = pictureCacheManager.getPictureWithHotCache(picture.getId().toString());
         if (cachedVO != null) {
+            fillPictureUserInfo(cachedVO);
             return cachedVO;
         }
         // 未命中热点缓存则正常脱敏处理
         PictureVO pictureVO = PictureVO.objToVo(picture);
-        Long userId = picture.getUserId();
-        if (userId != null && userId > 0) {
-            User user = userService.getById(userId);
-            UserVO userVO = userService.getUserVO(user);
-            pictureVO.setUser(userVO);
-        }
+        fillPictureUserInfo(pictureVO);
         return pictureVO;
+    }
+
+    /**
+     * 填充图片作者信息（热点缓存对象可能缺少 user 字段）
+     */
+    private void fillPictureUserInfo(PictureVO pictureVO) {
+        if (pictureVO == null) {
+            return;
+        }
+        UserVO userVO = pictureVO.getUser();
+        // user 为空，或者 user 对象存在但没有有效 id，都认为是未补全
+        if (userVO != null && userVO.getId() != null && userVO.getId() > 0) {
+            return;
+        }
+        Long userId = pictureVO.getUserId();
+        if (userId == null || userId <= 0) {
+            return;
+        }
+        User user = userService.getById(userId);
+        pictureVO.setUser(userService.getUserVO(user));
     }
 
 
@@ -635,25 +657,25 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
         }
         // 将目标颜色转为 Color 对象【避免在循环中多次转换】
         Color targetColor = Color.decode(picColor);
-        // 4. 计算相似度并排序
-        List<Picture> sortedPictures = pictureList.stream()
-                .sorted(Comparator.comparingDouble(picture -> {
-                    // 提取图片主色调
-                    String hexColor = picture.getPicColor();
-                    // 没有主色调的图片放到最后
-                    if (StrUtil.isBlank(hexColor)) {
-                        return Double.MAX_VALUE;
-                    }
-                    Color pictureColor = Color.decode(hexColor);
-                    // 越大越相似
-                    return -ColorSimilarUtils.calculateSimilarity(targetColor, pictureColor);
-                }))
-                // 取前 12 个
+        // 4. 计算相似度，先按阈值过滤，再按相似度排序
+        List<Picture> matchedPictures = pictureList.stream()
+                .filter(picture -> StrUtil.isNotBlank(picture.getPicColor()))
+                .map(picture -> {
+                    double similarity = ColorSimilarUtils.calculateSimilarity(targetColor, Color.decode(picture.getPicColor()));
+                    // 用临时 map 封装相似度，避免重复计算
+                    Map<String, Object> temp = new HashMap<>();
+                    temp.put("picture", picture);
+                    temp.put("similarity", similarity);
+                    return temp;
+                })
+                .filter(temp -> (double) temp.get("similarity") >= COLOR_SEARCH_SIMILARITY_THRESHOLD)
+                .sorted((a, b) -> Double.compare((double) b.get("similarity"), (double) a.get("similarity")))
                 .limit(12)
+                .map(temp -> (Picture) temp.get("picture"))
                 .collect(Collectors.toList());
 
         // 转换为 PictureVO
-        return sortedPictures.stream()
+        return matchedPictures.stream()
                 .map(PictureVO::objToVo)
                 .collect(Collectors.toList());
     }

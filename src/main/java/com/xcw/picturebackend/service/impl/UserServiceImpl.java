@@ -134,10 +134,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户不存在或密码错误");
         }
 
-        //4.保存用户的登录状态到Session中（记录用户的登录态）
-//        request.getSession().setAttribute("user_login_state", user);
-        request.getSession().setAttribute(UserConstant.USER_LOGIN_STATE, user);
-        // 记录用户登录态到 Sa-Token, 便于空间鉴权时使用【注意保证该用户信息与 SpringSession 中的信息过期时间一致】
+        //4. 记录用户登录态到 Sa-Token（会话数据存 Redis）
         StpKit.SPACE.login(user.getId());
         StpKit.SPACE.getSession().set(UserConstant.USER_LOGIN_STATE, user);
         return this.getLoginUserVO(user); //返回登录用户信息对象
@@ -182,14 +179,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
      */
     @Override
     public User getLoginUser(HttpServletRequest request) {
-        //先判断是否登录
-        Object userObj = request.getSession().getAttribute(UserConstant.USER_LOGIN_STATE);
-        User currentUser = (User) userObj;
-        ThrowUtils.throwIf(currentUser == null || currentUser.getId() == null, ErrorCode.NOT_LOGIN_ERROR);
-
-        //从数据库中查询（追求性能的话，直接返回上述结果）
-        Long userId = currentUser.getId();
-        currentUser = this.getById(userId);
+        // 基于 Sa-Token 获取当前 token 对应的登录用户（支持 Header Token，天然适配多标签页）
+        long userId = StpKit.SPACE.getLoginIdAsLong();
+        User currentUser = this.getById(userId);
         if (currentUser == null) {
             log.info("getLoginUser failed, userId cannot match user");
             throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR, "用户未登录或已注销");
@@ -205,14 +197,12 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
      */
     @Override
     public boolean userLogout(HttpServletRequest request) {
-        //先判断是否已经登录
-        Object userObj = request.getSession().getAttribute(UserConstant.USER_LOGIN_STATE);
-        if (userObj == null) {
+        // 仅注销当前 token（不影响同账号其他标签页或其他设备会话）
+        if (!StpKit.SPACE.isLogin()) {
             log.info("user logout failed, user not logged in");
             throw new BusinessException(ErrorCode.OPERATION_ERROR, "用户未登录或已注销");
         }
-        //如果登录了，清除Session中的用户信息（移除登录状态）
-        request.getSession().removeAttribute(UserConstant.USER_LOGIN_STATE);
+        StpKit.SPACE.logout();
         return true; //返回注销成功
     }
 
