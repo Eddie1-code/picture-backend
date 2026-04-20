@@ -12,6 +12,7 @@ import com.xcw.picturebackend.exception.ThrowUtils;
 import com.xcw.picturebackend.manager.sharding.DynamicShardingManager;
 import com.xcw.picturebackend.model.dto.space.SpaceAddRequest;
 import com.xcw.picturebackend.model.dto.space.SpaceQueryRequest;
+import com.xcw.picturebackend.model.entity.Picture;
 import com.xcw.picturebackend.model.entity.Space;
 import com.xcw.picturebackend.mapper.SpaceMapper;
 import com.xcw.picturebackend.model.entity.SpaceUser;
@@ -21,6 +22,7 @@ import com.xcw.picturebackend.model.enums.SpaceRoleEnum;
 import com.xcw.picturebackend.model.enums.SpaceTypeEnum;
 import com.xcw.picturebackend.model.vo.SpaceVO;
 import com.xcw.picturebackend.model.vo.UserVO;
+import com.xcw.picturebackend.service.PictureService;
 import com.xcw.picturebackend.service.SpaceService;
 import com.xcw.picturebackend.service.SpaceUserService;
 import com.xcw.picturebackend.service.UserService;
@@ -54,6 +56,10 @@ public class SpaceServiceImpl extends ServiceImpl<SpaceMapper, Space>
 
     @Resource
     private SpaceUserService spaceUserService;
+
+    @Resource
+    @Lazy
+    private PictureService pictureService;
 
     @Resource
     private TransactionTemplate transactionTemplate;
@@ -254,6 +260,28 @@ public class SpaceServiceImpl extends ServiceImpl<SpaceMapper, Space>
         if (!space.getUserId().equals(loginUser.getId()) && !userService.isAdmin(loginUser)) {
             throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
         }
+    }
+
+    @Override
+    public long[] reconcileSpaceUsageFromPictures(Long spaceId) {
+        if (spaceId == null || spaceId <= 0) {
+            return new long[]{0L, 0L};
+        }
+        long usedCount = pictureService.lambdaQuery().eq(Picture::getSpaceId, spaceId).count();
+        QueryWrapper<Picture> qw = new QueryWrapper<>();
+        qw.eq("spaceId", spaceId);
+        qw.select("COALESCE(SUM(picSize),0)");
+        List<Object> sumObjs = pictureService.getBaseMapper().selectObjs(qw);
+        long usedSize = 0L;
+        if (sumObjs != null && !sumObjs.isEmpty() && sumObjs.get(0) != null) {
+            usedSize = ((Number) sumObjs.get(0)).longValue();
+        }
+        this.lambdaUpdate()
+                .eq(Space::getId, spaceId)
+                .set(Space::getTotalCount, usedCount)
+                .set(Space::getTotalSize, usedSize)
+                .update();
+        return new long[]{usedCount, usedSize};
     }
 }
 

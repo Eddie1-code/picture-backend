@@ -7,6 +7,7 @@ import com.xcw.picturebackend.api.aliyunai.model.CreateOutPaintingTaskResponse;
 import com.xcw.picturebackend.model.dto.picture.*;
 import com.xcw.picturebackend.model.entity.Picture;
 import com.xcw.picturebackend.model.entity.User;
+import com.xcw.picturebackend.model.vo.PictureBatchFetchCandidateVO;
 import com.xcw.picturebackend.model.vo.PictureVO;
 
 import javax.servlet.http.HttpServletRequest;
@@ -91,6 +92,11 @@ public interface PictureService extends IService<Picture> {
             PictureUploadByBatchRequest pictureUploadByBatchRequest,
             User loginUser
     );
+
+    /**
+     * 批量抓取预览：解析候选图片 URL，不上传
+     */
+    List<PictureBatchFetchCandidateVO> previewBatchFetch(PictureBatchFetchPreviewRequest request);
 
     /**
      * 分页获取图片列表（封装类,有缓存）

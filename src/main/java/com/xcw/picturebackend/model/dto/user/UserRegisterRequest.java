@@ -26,4 +26,19 @@ public class UserRegisterRequest implements Serializable {
      * 确认密码
      */
     private String checkPassword;
+
+    /**
+     * 用户昵称（必填）
+     */
+    private String userName;
+
+    /**
+     * 个人简介（可选）
+     */
+    private String userProfile;
+
+    /**
+     * 头像 URL（可选；注册阶段可空，登录后在个人中心上传）
+     */
+    private String userAvatar;
 }

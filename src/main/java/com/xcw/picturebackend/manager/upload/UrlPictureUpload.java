@@ -13,6 +13,7 @@ import com.xcw.picturebackend.exception.ThrowUtils;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
+import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.Arrays;
@@ -26,6 +27,11 @@ import java.util.List;
 // 通过 URL 上传图片
 @Service
 public class UrlPictureUpload extends PictureUploadTemplate {
+
+    /** 部分图床（如必应缩略图 CDN）会拦截无浏览器特征的请求，需带常见 UA */
+    private static final String BROWSER_USER_AGENT =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
     @Override
     protected void validPicture(Object inputSource) {
         String fileUrl = (String) inputSource;
@@ -45,7 +51,9 @@ public class UrlPictureUpload extends PictureUploadTemplate {
         // 3. 发送 HEAD 请求以验证文件是否存在
         HttpResponse httpResponse = null;
         try {
-            httpResponse = HttpUtil.createRequest(Method.HEAD, fileUrl).execute();
+            httpResponse = HttpUtil.createRequest(Method.HEAD, fileUrl)
+                    .header("User-Agent", BROWSER_USER_AGENT)
+                    .execute();
             // 未正常返回，无需执行其他判断
             if (httpResponse.getStatus() != HttpStatus.HTTP_OK) {
                 return;
@@ -54,9 +62,14 @@ public class UrlPictureUpload extends PictureUploadTemplate {
             // 4. 校验文件类型
             String contentType = httpResponse.header("Content-Type");
             if (StrUtil.isNotBlank(contentType)) {
-                // 允许的图片类型
+                // 允许的图片类型（去掉 charset 等后缀，避免 image/jpeg;charset=… 无法匹配）
+                String ct = contentType.toLowerCase().trim();
+                int semi = ct.indexOf(';');
+                if (semi > 0) {
+                    ct = ct.substring(0, semi).trim();
+                }
                 final List<String> ALLOW_CONTENT_TYPES = Arrays.asList("image/jpeg", "image/jpg", "image/png", "image/webp");
-                ThrowUtils.throwIf(!ALLOW_CONTENT_TYPES.contains(contentType.toLowerCase()),
+                ThrowUtils.throwIf(!ALLOW_CONTENT_TYPES.contains(ct),
                         ErrorCode.PARAMS_ERROR, "文件类型错误");
             }
             // 5. 校验文件大小
@@ -87,8 +100,20 @@ public class UrlPictureUpload extends PictureUploadTemplate {
     @Override
     protected void processFile(Object inputSource, File file) throws Exception {
         String fileUrl = (String) inputSource;
-        // 下载文件到临时目录
-        HttpUtil.downloadFile(fileUrl, file);
+        HttpResponse response = HttpUtil.createGet(fileUrl)
+                .header("User-Agent", BROWSER_USER_AGENT)
+                .header("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
+                .timeout(120_000)
+                .execute();
+        try {
+            if (response.getStatus() != HttpStatus.HTTP_OK) {
+                throw new IOException("下载图片失败，HTTP " + response.getStatus());
+            }
+            // 单图已由 validPicture 限制体积；整包写入临时文件供 COS 上传
+            FileUtil.writeBytes(response.bodyBytes(), file);
+        } finally {
+            response.close();
+        }
     }
 
 }

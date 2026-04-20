@@ -2,6 +2,7 @@ package com.xcw.picturebackend.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.xcw.picturebackend.model.dto.user.UserQueryRequest;
+import com.xcw.picturebackend.model.dto.user.UserRegisterRequest;
 import com.xcw.picturebackend.model.dto.user.UserUpdateRequest;
 import com.xcw.picturebackend.model.entity.User;
 import com.baomidou.mybatisplus.extension.service.IService;
@@ -19,14 +20,9 @@ import java.util.List;
 public interface UserService extends IService<User> {
 
     /**
-     * 用户注册
-     *
-     * @param userAccount   用户账户
-     * @param userPassword  用户密码
-     * @param checkPassword 校验密码
-     * @return 新用户 id
+     * 用户注册（账号密码 + 昵称等资料，头像可后续再传）
      */
-    long userRegister(String userAccount, String userPassword, String checkPassword);
+    long userRegister(UserRegisterRequest userRegisterRequest);
 
 
     /**

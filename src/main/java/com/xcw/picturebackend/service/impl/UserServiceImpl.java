@@ -16,6 +16,7 @@ import com.xcw.picturebackend.exception.ErrorCode;
 import com.xcw.picturebackend.exception.ThrowUtils;
 import com.xcw.picturebackend.manager.auth.StpKit;
 import com.xcw.picturebackend.model.dto.user.UserQueryRequest;
+import com.xcw.picturebackend.model.dto.user.UserRegisterRequest;
 import com.xcw.picturebackend.model.dto.user.UserUpdateRequest;
 import com.xcw.picturebackend.model.entity.User;
 import com.xcw.picturebackend.model.dto.user.VipCode;
@@ -51,25 +52,41 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         implements UserService {
 
     @Override
-    public long userRegister(String userAccount, String userPassword, String checkPassword) {
+    public long userRegister(UserRegisterRequest req) {
+        ThrowUtils.throwIf(req == null, ErrorCode.PARAMS_ERROR, "参数为空");
+        String userAccount = req.getUserAccount();
+        String userPassword = req.getUserPassword();
+        String checkPassword = req.getCheckPassword();
+        String userProfile = req.getUserProfile();
+        String userAvatar = req.getUserAvatar();
+
         //1.校验参数
         if (StrUtil.hasBlank(userAccount, userPassword, checkPassword)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "参数为空");
         }
 
-        //传统写法：
+        userAccount = StrUtil.trim(userAccount);
         if (userAccount.length() < 4) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "账号长度小于4");
         }
-        //改进写法：
-        // ThrowUtils.throwIf(userAccount.length() < 4, ErrorCode.PARAMS_ERROR, "账号长度过短");
-
 
         if (userPassword.length() < 8) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "密码长度小于8");
         }
         if (!userPassword.equals(checkPassword)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "两次密码不一致");
+        }
+
+        // 展示昵称：未传或为空时与账号一致（账号即昵称）
+        String userName = StrUtil.trim(req.getUserName());
+        if (StrUtil.isBlank(userName)) {
+            userName = userAccount;
+        }
+        if (userName.length() < 2 || userName.length() > 256) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "昵称为 2-256 个字符");
+        }
+        if (StrUtil.isNotBlank(userProfile) && userProfile.length() > 512) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "简介过长");
         }
 
         //2.检查用户账号是否和数据库中已有的重复
@@ -87,7 +104,13 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         User user = new User();
         user.setUserAccount(userAccount);
         user.setUserPassword(encryptedPassword);
-        user.setUserName("无名"); //默认用户名
+        user.setUserName(userName);
+        if (StrUtil.isNotBlank(userProfile)) {
+            user.setUserProfile(StrUtil.trim(userProfile));
+        }
+        if (StrUtil.isNotBlank(userAvatar)) {
+            user.setUserAvatar(userAvatar.trim());
+        }
         user.setUserRole(UserRoleEnum.USER.getValue()); //默认用户角色
         boolean saveResult = this.save(user);
         /**

@@ -76,4 +76,12 @@ public interface SpaceService extends IService<Space> {
      * @param space     空间
      */
     void checkSpaceAuth(User loginUser, Space space);
+
+    /**
+     * 按 picture 表未逻辑删除数据统计指定空间用量，并回写 space.totalCount、totalSize（与真实数据对齐）。
+     *
+     * @param spaceId 空间 id
+     * @return [usedCount, usedPicSize]
+     */
+    long[] reconcileSpaceUsageFromPictures(Long spaceId);
 }

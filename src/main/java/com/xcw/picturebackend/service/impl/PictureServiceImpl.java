@@ -27,6 +27,7 @@ import com.xcw.picturebackend.model.entity.Picture;
 import com.xcw.picturebackend.model.entity.Space;
 import com.xcw.picturebackend.model.entity.User;
 import com.xcw.picturebackend.model.enums.PictureReviewStatusEnum;
+import com.xcw.picturebackend.model.vo.PictureBatchFetchCandidateVO;
 import com.xcw.picturebackend.model.vo.PictureVO;
 import com.xcw.picturebackend.model.vo.UserVO;
 import com.xcw.picturebackend.service.PictureService;
@@ -204,7 +205,7 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
             boolean result = this.saveOrUpdate(picture);
             ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR, "图片上传失败");
             if (finalSpaceId != null) {
-                // 更新空间的使用额度
+                // 上传走增量更新；与真实用量若有偏差会在删除或图库分析拉取时由 reconcile 纠偏
                 boolean update = spaceService.lambdaUpdate()
                         .eq(Space::getId, finalSpaceId)
                         .setSql("totalSize = totalSize + " + picture.getPicSize())
@@ -450,6 +451,59 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
     }
 
 
+    /**
+     * 从必应图片异步页解析候选图片 URL（不下载）
+     */
+    private List<String> parseBingImageUrls(String searchText, int maxUrls) {
+        String fetchUrl = String.format("https://cn.bing.com/images/async?q=%s&mmasync=1", searchText);
+        Document document;
+        try {
+            document = Jsoup.connect(fetchUrl).get();
+        } catch (IOException e) {
+            log.error("获取页面失败", e);
+            throw new BusinessException(ErrorCode.OPERATION_ERROR, "获取页面失败");
+        }
+        Element div = document.getElementsByClass("dgControl").first();
+        if (ObjUtil.isNull(div)) {
+            throw new BusinessException(ErrorCode.OPERATION_ERROR, "获取元素失败");
+        }
+        Elements imgElementList = div.select("img.mimg");
+        List<String> urls = new ArrayList<>();
+        for (Element imgElement : imgElementList) {
+            if (urls.size() >= maxUrls) {
+                break;
+            }
+            String fileUrl = imgElement.attr("src");
+            if (StrUtil.isBlank(fileUrl)) {
+                continue;
+            }
+            int questionMarkIndex = fileUrl.indexOf("?");
+            if (questionMarkIndex > -1) {
+                fileUrl = fileUrl.substring(0, questionMarkIndex);
+            }
+            urls.add(fileUrl);
+        }
+        return urls;
+    }
+
+    @Override
+    public List<PictureBatchFetchCandidateVO> previewBatchFetch(PictureBatchFetchPreviewRequest request) {
+        ThrowUtils.throwIf(request == null, ErrorCode.PARAMS_ERROR);
+        String searchText = request.getSearchText();
+        ThrowUtils.throwIf(StrUtil.isBlank(searchText), ErrorCode.PARAMS_ERROR, "关键词不能为空");
+        int count = request.getCount() != null ? request.getCount() : 20;
+        ThrowUtils.throwIf(count < 1 || count > 30, ErrorCode.PARAMS_ERROR, "候选数量应在 1～30 之间");
+        List<String> urls = parseBingImageUrls(searchText, count);
+        List<PictureBatchFetchCandidateVO> list = new ArrayList<>();
+        for (int i = 0; i < urls.size(); i++) {
+            PictureBatchFetchCandidateVO vo = new PictureBatchFetchCandidateVO();
+            vo.setIndex(i + 1);
+            vo.setFileUrl(urls.get(i));
+            list.add(vo);
+        }
+        return list;
+    }
+
     @Override
     public Integer uploadPictureByBatch(PictureUploadByBatchRequest pictureUploadByBatchRequest, User loginUser) {
         String searchText = pictureUploadByBatchRequest.getSearchText();
@@ -461,38 +515,11 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
         if (StrUtil.isBlank(namePrefix)) {
             namePrefix = searchText;
         }
-        // 要抓取的地址
-        String fetchUrl = String.format("https://cn.bing.com/images/async?q=%s&mmasync=1", searchText);
-        Document document;
-        try {
-            document = Jsoup.connect(fetchUrl).get();
-        } catch (IOException e) {
-            log.error("获取页面失败", e);
-            throw new BusinessException(ErrorCode.OPERATION_ERROR, "获取页面失败");
-        }
-        //解析内容
-        Element div = document.getElementsByClass("dgControl").first();
-        if (ObjUtil.isNull(div)) {
-            throw new BusinessException(ErrorCode.OPERATION_ERROR, "获取元素失败");
-        }
-        // 获取图片元素列表（CSS 选择器）
-        Elements imgElementList = div.select("img.mimg");
+        // 多解析一些 URL，部分链接上传会失败
+        List<String> candidateUrls = parseBingImageUrls(searchText, 120);
         int uploadCount = 0;
 
-        // 遍历图片元素，依次获取图片 URL 并上传
-        for (Element imgElement : imgElementList) {
-            String fileUrl = imgElement.attr("src");
-            // 链接为空则跳过（部分图片可能没有 src 属性，这样能确保部分图片上传失败不会影响整体）
-            if (StrUtil.isBlank(fileUrl)) {
-                log.info("当前链接为空，已跳过: {}", fileUrl);
-                continue;
-            }
-            // 处理图片上传地址，防止出现转义问题
-            int questionMarkIndex = fileUrl.indexOf("?");
-            if (questionMarkIndex > -1) {
-                fileUrl = fileUrl.substring(0, questionMarkIndex);
-            }
-            // 上传图片
+        for (String fileUrl : candidateUrls) {
             PictureUploadRequest pictureUploadRequest = new PictureUploadRequest();
             pictureUploadRequest.setFileUrl(fileUrl);
             pictureUploadRequest.setPicName(namePrefix + (uploadCount + 1));
@@ -579,12 +606,7 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
             // 释放额度
             Long spaceId = oldPicture.getSpaceId();
             if (spaceId != null) {
-                boolean update = spaceService.lambdaUpdate()
-                        .eq(Space::getId, spaceId)
-                        .setSql("totalSize = totalSize - " + oldPicture.getPicSize())
-                        .setSql("totalCount = totalCount - 1")
-                        .update();
-                ThrowUtils.throwIf(!update, ErrorCode.OPERATION_ERROR, "额度更新失败");
+                spaceService.reconcileSpaceUsageFromPictures(spaceId);
             }
             return true;
         });

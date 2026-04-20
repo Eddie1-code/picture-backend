@@ -1,7 +1,9 @@
 package com.xcw.picturebackend.controller;
 
 import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.io.FileUtil;
+import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.xcw.picturebackend.annotation.AuthCheck;
 import com.xcw.picturebackend.common.BaseResponse;
@@ -19,7 +21,10 @@ import com.xcw.picturebackend.model.vo.LoginUserVO;
 import com.xcw.picturebackend.model.vo.UserVO;
 import com.xcw.picturebackend.manager.auth.StpKit;
 import com.xcw.picturebackend.service.UserService;
-import org.springframework.beans.BeanUtils;
+import com.qcloud.cos.model.PutObjectResult;
+import com.qcloud.cos.model.ciModel.persistence.CIObject;
+import com.qcloud.cos.model.ciModel.persistence.ProcessResults;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -27,9 +32,12 @@ import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.File;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
+@Slf4j
 @RestController
 @RequestMapping("/user")
 public class UserController {
@@ -49,12 +57,7 @@ public class UserController {
     @PostMapping("/register")
     public BaseResponse<Long> userRegister(@RequestBody UserRegisterRequest userRegisterRequest) {
         ThrowUtils.throwIf(userRegisterRequest == null, ErrorCode.PARAMS_ERROR);
-        String userAccount = userRegisterRequest.getUserAccount();
-        String userPassword = userRegisterRequest.getUserPassword();
-        String checkPassword = userRegisterRequest.getCheckPassword();
-
-        long result = userService.userRegister(userAccount, userPassword, checkPassword);
-
+        long result = userService.userRegister(userRegisterRequest);
         return ResultUtils.success(result);
     }
 
@@ -160,8 +163,25 @@ public class UserController {
         if (userUpdateRequest == null || userUpdateRequest.getId() == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
+        User existing = userService.getById(userUpdateRequest.getId());
+        ThrowUtils.throwIf(existing == null, ErrorCode.NOT_FOUND_ERROR);
         User user = new User();
-        BeanUtils.copyProperties(userUpdateRequest, user);
+        user.setId(userUpdateRequest.getId());
+        user.setUserName(StrUtil.isNotBlank(userUpdateRequest.getUserName())
+                ? userUpdateRequest.getUserName() : existing.getUserName());
+        user.setUserAvatar(StrUtil.isNotBlank(userUpdateRequest.getUserAvatar())
+                ? userUpdateRequest.getUserAvatar() : existing.getUserAvatar());
+        user.setUserProfile(userUpdateRequest.getUserProfile() != null
+                ? userUpdateRequest.getUserProfile() : existing.getUserProfile());
+        user.setUserRole(StrUtil.isNotBlank(userUpdateRequest.getUserRole())
+                ? userUpdateRequest.getUserRole() : existing.getUserRole());
+        if (StrUtil.isNotBlank(userUpdateRequest.getUserPassword())) {
+            ThrowUtils.throwIf(userUpdateRequest.getUserPassword().length() < 8,
+                    ErrorCode.PARAMS_ERROR, "密码长度不能小于 8");
+            user.setUserPassword(userService.getEncryptPassword(userUpdateRequest.getUserPassword()));
+        } else {
+            user.setUserPassword(existing.getUserPassword());
+        }
         boolean result = userService.updateById(user);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
         return ResultUtils.success(true);
@@ -232,24 +252,53 @@ public class UserController {
 
         // 生成唯一文件名
         String originalFilename = multipartFile.getOriginalFilename();
-        String suffix = FileUtil.getSuffix(originalFilename);
+        String suffix = StrUtil.blankToDefault(FileUtil.getSuffix(originalFilename), "").toLowerCase(Locale.ROOT);
+        final List<String> allowSuffixList = Arrays.asList("jpg", "jpeg", "png", "webp");
+        ThrowUtils.throwIf(!allowSuffixList.contains(suffix), ErrorCode.PARAMS_ERROR, "仅支持 JPG / PNG / WebP");
+        // 统一 jpeg -> jpg，避免同类型出现两种后缀
+        if ("jpeg".equals(suffix)) {
+            suffix = "jpg";
+        }
         String filename = UUID.randomUUID().toString() + "." + suffix;
 
         // 构建文件路径
-        String filepath = String.format("/avatar/%s/%s", loginUser.getId(), filename);
+        String filepath = String.format("avatar/%s/%s", loginUser.getId(), filename);
         File file = null;
 
         try {
             // 上传文件
-            file = File.createTempFile(filename, null);
+            file = File.createTempFile("avatar_", "." + suffix);
             multipartFile.transferTo(file);
-            cosManager.putObject(filepath, file);
-
-            // 构建完整的 URL
-            // 构建完整的 URL
-            String fullUrl = cosClientConfig.getCdnDomain() + filepath;
-
-            // 返回完整的 URL
+            /*
+             * 与图库上传（PictureUploadTemplate）一致：走 COS 数据万象 putPictureObject，
+             * 会生成 WebP 压缩对象；返回地址应为该处理结果（与图库 picUrl 一致）。
+             * 此前仅用普通 putObject 存 jpg/png 时，在部分 CDN/桶配置下无法展示，而直接上传 webp 却正常。
+             */
+            PutObjectResult putObjectResult = null;
+            try {
+                putObjectResult = cosManager.putPictureObject(filepath, file);
+            } catch (Exception ex) {
+                log.warn("头像走万象处理失败，回退直传: {}", ex.getMessage());
+            }
+            if (putObjectResult != null && putObjectResult.getCiUploadResult() != null) {
+                ProcessResults processResults = putObjectResult.getCiUploadResult().getProcessResults();
+                if (processResults != null && CollUtil.isNotEmpty(processResults.getObjectList())) {
+                    CIObject compressed = processResults.getObjectList().get(0);
+                    String key = compressed.getKey();
+                    if (StrUtil.isNotBlank(key)) {
+                        String normalizedKey = key.startsWith("/") ? key.substring(1) : key;
+                        String fullUrl = StrUtil.addSuffixIfNot(cosClientConfig.getCdnDomain(), "/") + normalizedKey;
+                        return ResultUtils.success(fullUrl);
+                    }
+                }
+                // 万象未返回处理列表时，原图已在 putPictureObject 中上传至 filepath（与 PictureUploadTemplate 回退一致）
+                String fullUrl = StrUtil.addSuffixIfNot(cosClientConfig.getCdnDomain(), "/") + filepath;
+                return ResultUtils.success(fullUrl);
+            }
+            // 万象完全未生效时回退直传
+            String contentType = resolveAvatarContentType(suffix, multipartFile.getContentType());
+            cosManager.putObject(filepath, file, contentType);
+            String fullUrl = StrUtil.addSuffixIfNot(cosClientConfig.getCdnDomain(), "/") + filepath;
             return ResultUtils.success(fullUrl);
         } catch (Exception e) {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "上传失败");
@@ -258,6 +307,41 @@ public class UserController {
                 // 删除临时文件
                 file.delete();
             }
+        }
+    }
+
+    /**
+     * 解析头像上传的 Content-Type：优先使用浏览器提供的 image/*；对空值、application/*、错误的 image/jpg 按扩展名兜底。
+     */
+    private static String resolveAvatarContentType(String fileSuffix, String multipartContentType) {
+        String bySuffix = mapFileSuffixToImageMime(fileSuffix);
+        if (StrUtil.isBlank(multipartContentType)) {
+            return bySuffix;
+        }
+        String ct = multipartContentType.toLowerCase(Locale.ROOT).trim();
+        if ("image/jpg".equals(ct)) {
+            return "image/jpeg";
+        }
+        if (ct.startsWith("image/")) {
+            return ct;
+        }
+        return bySuffix;
+    }
+
+    private static String mapFileSuffixToImageMime(String suffix) {
+        if (StrUtil.isBlank(suffix)) {
+            return "application/octet-stream";
+        }
+        switch (suffix.toLowerCase(Locale.ROOT)) {
+            case "jpg":
+            case "jpeg":
+                return "image/jpeg";
+            case "png":
+                return "image/png";
+            case "webp":
+                return "image/webp";
+            default:
+                return "application/octet-stream";
         }
     }
 

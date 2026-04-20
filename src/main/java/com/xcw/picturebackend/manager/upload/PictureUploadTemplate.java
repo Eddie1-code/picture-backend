@@ -6,6 +6,7 @@ import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.NumberUtil;
 import cn.hutool.core.util.RandomUtil;
+import cn.hutool.core.util.StrUtil;
 import com.qcloud.cos.model.PutObjectResult;
 import com.qcloud.cos.model.ciModel.persistence.CIObject;
 import com.qcloud.cos.model.ciModel.persistence.ImageInfo;
@@ -51,8 +52,12 @@ public abstract class PictureUploadTemplate {
 
         File file = null;
         try {
-            // 3. 创建临时文件
-            file = File.createTempFile(uploadPath, null);
+            // 3. 创建临时文件（前缀不得含路径分隔符，否则 Windows 下 File.createTempFile 会失败）
+            String ext = FileUtil.extName(originFilename);
+            if (StrUtil.isBlank(ext) || ext.length() > 8) {
+                ext = "tmp";
+            }
+            file = File.createTempFile("upload_" + uuid + "_", "." + ext);
             // 处理文件来源（本地或 URL）
             processFile(inputSource, file);
 

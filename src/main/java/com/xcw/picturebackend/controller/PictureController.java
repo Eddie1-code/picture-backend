@@ -24,6 +24,7 @@ import com.xcw.picturebackend.model.dto.picture.*;
 import com.xcw.picturebackend.model.entity.Picture;
 import com.xcw.picturebackend.model.entity.Space;
 import com.xcw.picturebackend.model.enums.PictureReviewStatusEnum;
+import com.xcw.picturebackend.model.vo.PictureBatchFetchCandidateVO;
 import com.xcw.picturebackend.model.vo.PictureTagCategory;
 import com.xcw.picturebackend.model.entity.User;
 import com.xcw.picturebackend.model.vo.PictureVO;
@@ -305,6 +306,19 @@ public class PictureController {
         User loginUser = userService.getLoginUser(request);
         int uploadCount = pictureService.uploadPictureByBatch(pictureUploadByBatchRequest, loginUser);
         return ResultUtils.success(uploadCount);
+    }
+
+    /**
+     * 批量抓取预览：仅返回候选图片 URL，不上传
+     */
+    @PostMapping("/upload/batch/preview")
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
+    public BaseResponse<List<PictureBatchFetchCandidateVO>> previewBatchFetch(
+            @RequestBody PictureBatchFetchPreviewRequest pictureBatchFetchPreviewRequest
+    ) {
+        ThrowUtils.throwIf(pictureBatchFetchPreviewRequest == null, ErrorCode.PARAMS_ERROR);
+        List<PictureBatchFetchCandidateVO> list = pictureService.previewBatchFetch(pictureBatchFetchPreviewRequest);
+        return ResultUtils.success(list);
     }
 
     /**

@@ -57,15 +57,21 @@ public class SpaceAnalyzeServiceImpl extends ServiceImpl<SpaceMapper, Space> imp
             // 仅管理员可以访问
             boolean isAdmin = userService.isAdmin(loginUser);
             ThrowUtils.throwIf(!isAdmin, ErrorCode.NO_AUTH_ERROR, "无权访问空间");
-            // 统计公共图库的资源使用
-            QueryWrapper<Picture> queryWrapper = new QueryWrapper<>();
-            queryWrapper.select("picSize");
-            if (!spaceUsageAnalyzeRequest.isQueryAll()) {
-                queryWrapper.isNull("spaceId");
+            // 从 picture 表实时统计（仅未逻辑删除，与 MyBatis-Plus 默认行为一致）
+            long usedCount;
+            long usedSize;
+            if (spaceUsageAnalyzeRequest.isQueryAll()) {
+                // 「全部空间」只统计归属某一空间的图片（spaceId 非空），不含公共图库；与 space 表用量汇总语义一致
+                usedCount = pictureService.lambdaQuery().isNotNull(Picture::getSpaceId).count();
+                QueryWrapper<Picture> allSpacesQw = new QueryWrapper<>();
+                allSpacesQw.isNotNull("spaceId");
+                usedSize = sumPicSize(allSpacesQw);
+            } else {
+                usedCount = pictureService.lambdaQuery().isNull(Picture::getSpaceId).count();
+                QueryWrapper<Picture> publicQw = new QueryWrapper<>();
+                publicQw.isNull("spaceId");
+                usedSize = sumPicSize(publicQw);
             }
-            List<Object> pictureObjList = pictureService.getBaseMapper().selectObjs(queryWrapper);
-            long usedSize = pictureObjList.stream().mapToLong(result -> result instanceof Long ? (Long) result : 0).sum();
-            long usedCount = pictureObjList.size();
             // 封装返回结果
             SpaceUsageAnalyzeResponse spaceUsageAnalyzeResponse = new SpaceUsageAnalyzeResponse();
             spaceUsageAnalyzeResponse.setUsedSize(usedSize);
@@ -77,29 +83,47 @@ public class SpaceAnalyzeServiceImpl extends ServiceImpl<SpaceMapper, Space> imp
             spaceUsageAnalyzeResponse.setCountUsageRatio(null);
             return spaceUsageAnalyzeResponse;
         } else {
-            // 查询指定空间(可以直接从 Space 表中查询)
+            // 指定空间：用量以 picture 表未删除数据为准，并回写 space 表，避免 totalCount/totalSize 与真实不一致
             Long spaceId = spaceUsageAnalyzeRequest.getSpaceId();
             ThrowUtils.throwIf(spaceId == null || spaceId <= 0, ErrorCode.PARAMS_ERROR);
-            // 获取空间信息
             Space space = spaceService.getById(spaceId);
             ThrowUtils.throwIf(space == null, ErrorCode.NOT_FOUND_ERROR, "空间不存在");
 
-            // 权限校验：仅空间所有者或管理员可访问
             spaceService.checkSpaceAuth(loginUser, space);
 
-            // 构造返回结果
+            long[] usage = spaceService.reconcileSpaceUsageFromPictures(spaceId);
+            long usedCount = usage[0];
+            long usedSize = usage[1];
+
             SpaceUsageAnalyzeResponse response = new SpaceUsageAnalyzeResponse();
-            response.setUsedSize(space.getTotalSize());
+            response.setUsedSize(usedSize);
             response.setMaxSize(space.getMaxSize());
-            // 后端直接算好百分比，这样前端可以直接展示
-            double sizeUsageRatio = NumberUtil.round(space.getTotalSize() * 100.0 / space.getMaxSize(), 2).doubleValue();
-            response.setSizeUsageRatio(sizeUsageRatio);
-            response.setUsedCount(space.getTotalCount());
+            response.setUsedCount(usedCount);
             response.setMaxCount(space.getMaxCount());
-            double countUsageRatio = NumberUtil.round(space.getTotalCount() * 100.0 / space.getMaxCount(), 2).doubleValue();
-            response.setCountUsageRatio(countUsageRatio);
+            if (space.getMaxSize() != null && space.getMaxSize() > 0) {
+                response.setSizeUsageRatio(NumberUtil.round(usedSize * 100.0 / space.getMaxSize(), 2).doubleValue());
+            } else {
+                response.setSizeUsageRatio(null);
+            }
+            if (space.getMaxCount() != null && space.getMaxCount() > 0) {
+                response.setCountUsageRatio(NumberUtil.round(usedCount * 100.0 / space.getMaxCount(), 2).doubleValue());
+            } else {
+                response.setCountUsageRatio(null);
+            }
             return response;
         }
+    }
+
+    /**
+     * 统计符合条件的图片体积之和（仅未逻辑删除；条件通过 QueryWrapper 追加，逻辑删除由 MP 自动拼接）
+     */
+    private long sumPicSize(QueryWrapper<Picture> queryWrapper) {
+        queryWrapper.select("COALESCE(SUM(picSize),0)");
+        List<Object> objs = pictureService.getBaseMapper().selectObjs(queryWrapper);
+        if (objs == null || objs.isEmpty() || objs.get(0) == null) {
+            return 0L;
+        }
+        return ((Number) objs.get(0)).longValue();
     }
 
     @Override
@@ -162,8 +186,9 @@ public class SpaceAnalyzeServiceImpl extends ServiceImpl<SpaceMapper, Space> imp
      */
     private void fillAnalyzeQueryWrapper(SpaceAnalyzeRequest spaceAnalyzeRequest, QueryWrapper<Picture> queryWrapper) {
         boolean queryAll = spaceAnalyzeRequest.isQueryAll();
-        // 全空间分析
+        // 全部空间：仅各「空间」内图片（spaceId 非空），不包含公共图库（spaceId 为空）；避免与 space.totalCount 汇总口径不一致
         if (queryAll) {
+            queryWrapper.isNotNull("spaceId");
             return;
         }
         boolean queryPublic = spaceAnalyzeRequest.isQueryPublic();
