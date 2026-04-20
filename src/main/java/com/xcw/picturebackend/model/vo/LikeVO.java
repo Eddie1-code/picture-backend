@@ -6,31 +6,27 @@ import java.io.Serializable;
 import java.util.Date;
 
 /**
- * 「我的收藏」列表项，目标可能是图片/空间，携带最少必要字段
+ * 「某用户的点赞」列表项。
+ * 目前主要承载图片（targetType=1）；帖子（targetType=2）在引入帖子模块后续填充。
  */
 @Data
-public class FavoriteVO implements Serializable {
+public class LikeVO implements Serializable {
 
-    private Long favoriteRecordId;
+    private Long likeRecordId;
 
     private Long targetId;
 
     /**
-     * 1-图片 3-空间
+     * 1-图片 2-帖子 3-空间
      */
     private Integer targetType;
 
-    private Date favoriteTime;
+    private Date likeTime;
 
     /**
      * 图片封装（targetType=1 时非空）
      */
     private PictureVO picture;
-
-    /**
-     * 空间封装（targetType=3 时非空）
-     */
-    private SpaceVO space;
 
     /**
      * 帖子封装（targetType=2 时非空）

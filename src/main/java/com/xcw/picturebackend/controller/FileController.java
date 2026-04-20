@@ -10,14 +10,21 @@ import com.xcw.picturebackend.constant.UserConstant;
 import com.xcw.picturebackend.exception.BusinessException;
 import com.xcw.picturebackend.exception.ErrorCode;
 import com.xcw.picturebackend.manager.CosManager;
+import com.xcw.picturebackend.manager.upload.FilePictureUpload;
+import com.xcw.picturebackend.model.dto.file.UploadPictureResult;
+import com.xcw.picturebackend.model.entity.User;
+import com.xcw.picturebackend.service.UserService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Resource;
+import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.File;
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 
 
 @Slf4j
@@ -27,6 +34,12 @@ public class FileController {
 
     @Resource
     private CosManager cosManager;
+
+    @Resource
+    private FilePictureUpload filePictureUpload;
+
+    @Resource
+    private UserService userService;
 
     /**
      * 测试文件上传
@@ -60,6 +73,31 @@ public class FileController {
                 }
             }
         }
+    }
+
+    /**
+     * 帖子配图上传
+     * <p>
+     * - 登录即可使用，路径前缀按 userId 区分
+     * - 走 PictureUploadTemplate 的压缩 + 缩略图流水线；url 落 COS CDN，不写 picture 表
+     * - 返回 Map 便于前端直接拿 url / thumbnailUrl / 尺寸信息
+     */
+    @PostMapping("/post/image")
+    public BaseResponse<Map<String, Object>> uploadPostImage(
+            @RequestPart("file") MultipartFile multipartFile,
+            HttpServletRequest request
+    ) {
+        User loginUser = userService.getLoginUser(request);
+        String prefix = String.format("post/%s", loginUser.getId());
+        UploadPictureResult result = filePictureUpload.uploadPicture(multipartFile, prefix);
+        Map<String, Object> body = new HashMap<>();
+        body.put("url", result.getUrl());
+        body.put("thumbnailUrl", result.getThumbnailUrl());
+        body.put("picWidth", result.getPicWidth());
+        body.put("picHeight", result.getPicHeight());
+        body.put("picSize", result.getPicSize());
+        body.put("picFormat", result.getPicFormat());
+        return ResultUtils.success(body);
     }
 
     /**

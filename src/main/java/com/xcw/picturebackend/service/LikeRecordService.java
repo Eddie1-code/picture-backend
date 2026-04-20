@@ -1,8 +1,11 @@
 package com.xcw.picturebackend.service;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.IService;
+import com.xcw.picturebackend.model.dto.interaction.LikeQueryRequest;
 import com.xcw.picturebackend.model.entity.LikeRecord;
 import com.xcw.picturebackend.model.entity.User;
+import com.xcw.picturebackend.model.vo.LikeVO;
 
 import java.util.Collection;
 import java.util.Map;
@@ -27,4 +30,10 @@ public interface LikeRecordService extends IService<LikeRecord> {
      * 批量查询一批 target 的点赞数（带容错：targetIds 为空时返回空 map）
      */
     Map<Long, Long> countLikes(Integer targetType, Collection<Long> targetIds);
+
+    /**
+     * 「我 / 某用户」的点赞列表（默认只返回图片类）。
+     * 查看他人时会根据 user.showLikeList 做隐私校验，被隐藏时返回空页。
+     */
+    Page<LikeVO> listMyLikes(LikeQueryRequest request, User loginUser);
 }

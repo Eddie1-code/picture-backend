@@ -6,22 +6,29 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.xcw.picturebackend.exception.BusinessException;
 import com.xcw.picturebackend.exception.ErrorCode;
 import com.xcw.picturebackend.exception.ThrowUtils;
+import com.xcw.picturebackend.manager.social.InteractionEvent;
 import com.xcw.picturebackend.manager.social.InteractionLockManager;
+import com.xcw.picturebackend.manager.social.InteractionStreamProducer;
+import com.xcw.picturebackend.manager.social.UnreadRedisManager;
 import com.xcw.picturebackend.mapper.FavoriteRecordMapper;
 import com.xcw.picturebackend.model.dto.interaction.FavoriteQueryRequest;
 import com.xcw.picturebackend.model.entity.FavoriteRecord;
 import com.xcw.picturebackend.model.entity.Picture;
+import com.xcw.picturebackend.model.entity.Post;
 import com.xcw.picturebackend.model.entity.Space;
 import com.xcw.picturebackend.model.entity.User;
 import com.xcw.picturebackend.model.enums.TargetTypeEnum;
 import com.xcw.picturebackend.model.vo.FavoriteVO;
 import com.xcw.picturebackend.model.vo.PictureVO;
+import com.xcw.picturebackend.model.vo.PostVO;
 import com.xcw.picturebackend.model.vo.SpaceVO;
 import com.xcw.picturebackend.model.vo.UserVO;
 import com.xcw.picturebackend.service.FavoriteRecordService;
 import com.xcw.picturebackend.service.PictureService;
+import com.xcw.picturebackend.service.PostService;
 import com.xcw.picturebackend.service.SpaceService;
 import com.xcw.picturebackend.service.UserService;
+import org.springframework.context.annotation.Lazy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -49,6 +56,12 @@ public class FavoriteRecordServiceImpl extends ServiceImpl<FavoriteRecordMapper,
     private InteractionLockManager interactionLockManager;
 
     @Resource
+    private UnreadRedisManager unreadRedisManager;
+
+    @Resource
+    private InteractionStreamProducer interactionStreamProducer;
+
+    @Resource
     private PictureService pictureService;
 
     @Resource
@@ -56,6 +69,10 @@ public class FavoriteRecordServiceImpl extends ServiceImpl<FavoriteRecordMapper,
 
     @Resource
     private UserService userService;
+
+    @Lazy
+    @Resource
+    private PostService postService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -77,6 +94,13 @@ public class FavoriteRecordServiceImpl extends ServiceImpl<FavoriteRecordMapper,
                 throw new BusinessException(ErrorCode.FORBIDDEN_ERROR, "作者已关闭收藏");
             }
             targetUserId = p.getUserId();
+        } else if (TargetTypeEnum.POST.getValue() == targetType) {
+            Post post = postService.getById(targetId);
+            ThrowUtils.throwIf(post == null, ErrorCode.NOT_FOUND_ERROR, "帖子不存在");
+            if (post.getAllowCollect() != null && post.getAllowCollect() == 0) {
+                throw new BusinessException(ErrorCode.FORBIDDEN_ERROR, "作者已关闭收藏");
+            }
+            targetUserId = post.getUserId();
         } else if (TargetTypeEnum.SPACE.getValue() == targetType) {
             Space s = spaceService.getById(targetId);
             ThrowUtils.throwIf(s == null, ErrorCode.NOT_FOUND_ERROR, "空间不存在");
@@ -111,7 +135,20 @@ public class FavoriteRecordServiceImpl extends ServiceImpl<FavoriteRecordMapper,
                     .eq(Picture::getId, targetId)
                     .setSql("favoriteCount = GREATEST(0, IFNULL(favoriteCount,0) + (" + delta + "))")
                     .update();
+        } else if (TargetTypeEnum.POST.getValue() == targetType) {
+            postService.lambdaUpdate()
+                    .eq(Post::getId, targetId)
+                    .setSql("favoriteCount = GREATEST(0, IFNULL(favoriteCount,0) + (" + delta + "))")
+                    .update();
         }
+
+        if (newFavorite == 1 && targetUserId != null && !targetUserId.equals(userId)) {
+            unreadRedisManager.incFavorite(targetUserId);
+        }
+        interactionStreamProducer.publish(InteractionEvent.of(
+                newFavorite == 1 ? InteractionEvent.TYPE_FAVORITE : InteractionEvent.TYPE_UNFAVORITE,
+                userId, targetUserId, targetType, targetId
+        ));
         return newFavorite == 1;
     }
 
@@ -131,8 +168,20 @@ public class FavoriteRecordServiceImpl extends ServiceImpl<FavoriteRecordMapper,
         long size = Math.min(FAVORITE_MAX_PAGE_SIZE, Math.max(1, request.getPageSize()));
         Integer targetType = request.getTargetType();
 
+        // 目标用户：默认本人；他人时校验隐私
+        Long targetUserId = request.getUserId() != null ? request.getUserId() : loginUser.getId();
+        boolean isSelf = targetUserId.equals(loginUser.getId());
+        if (!isSelf) {
+            User owner = userService.getById(targetUserId);
+            if (owner == null || (owner.getShowFavoriteList() != null && owner.getShowFavoriteList() == 0)) {
+                Page<FavoriteVO> empty = new Page<>(current, size, 0);
+                empty.setRecords(Collections.emptyList());
+                return empty;
+            }
+        }
+
         Page<FavoriteRecord> page = this.lambdaQuery()
-                .eq(FavoriteRecord::getUserId, loginUser.getId())
+                .eq(FavoriteRecord::getUserId, targetUserId)
                 .eq(FavoriteRecord::getIsFavorite, 1)
                 .eq(targetType != null, FavoriteRecord::getTargetType, targetType)
                 .orderByDesc(FavoriteRecord::getFavoriteTime)
@@ -145,12 +194,15 @@ public class FavoriteRecordServiceImpl extends ServiceImpl<FavoriteRecordMapper,
             return voPage;
         }
 
-        // 分组批查：图片 / 空间
+        // 分组批查：图片 / 空间 / 帖子
         Set<Long> pictureIds = records.stream()
                 .filter(r -> TargetTypeEnum.PICTURE.getValue() == r.getTargetType())
                 .map(FavoriteRecord::getTargetId).collect(Collectors.toSet());
         Set<Long> spaceIds = records.stream()
                 .filter(r -> TargetTypeEnum.SPACE.getValue() == r.getTargetType())
+                .map(FavoriteRecord::getTargetId).collect(Collectors.toSet());
+        Set<Long> postIds = records.stream()
+                .filter(r -> TargetTypeEnum.POST.getValue() == r.getTargetType())
                 .map(FavoriteRecord::getTargetId).collect(Collectors.toSet());
 
         Map<Long, Picture> pictureMap = pictureIds.isEmpty()
@@ -163,6 +215,11 @@ public class FavoriteRecordServiceImpl extends ServiceImpl<FavoriteRecordMapper,
                 : spaceService.listByIds(spaceIds).stream()
                 .collect(Collectors.toMap(Space::getId, s -> s, (a, b) -> a));
 
+        Map<Long, Post> postMap = postIds.isEmpty()
+                ? Collections.emptyMap()
+                : postService.listByIds(postIds).stream()
+                .collect(Collectors.toMap(Post::getId, p -> p, (a, b) -> a));
+
         // 聚合作者
         Set<Long> authorIds = new HashSet<>();
         pictureMap.values().forEach(p -> {
@@ -170,6 +227,9 @@ public class FavoriteRecordServiceImpl extends ServiceImpl<FavoriteRecordMapper,
         });
         spaceMap.values().forEach(s -> {
             if (s.getUserId() != null) authorIds.add(s.getUserId());
+        });
+        postMap.values().forEach(p -> {
+            if (p.getUserId() != null) authorIds.add(p.getUserId());
         });
         Map<Long, UserVO> authorVOMap = authorIds.isEmpty()
                 ? Collections.emptyMap()
@@ -196,6 +256,14 @@ public class FavoriteRecordServiceImpl extends ServiceImpl<FavoriteRecordMapper,
                     SpaceVO sv = SpaceVO.objToVo(s);
                     sv.setUser(authorVOMap.get(s.getUserId()));
                     vo.setSpace(sv);
+                }
+            } else if (TargetTypeEnum.POST.getValue() == r.getTargetType()) {
+                Post p = postMap.get(r.getTargetId());
+                if (p != null) {
+                    PostVO pv = PostVO.objToVo(p);
+                    pv.setUser(authorVOMap.get(p.getUserId()));
+                    pv.setIsFavorite(true);
+                    vo.setPost(pv);
                 }
             }
             return vo;

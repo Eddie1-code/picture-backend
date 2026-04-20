@@ -51,6 +51,9 @@ public class UserController {
     @Resource
     private CosClientConfig cosClientConfig;
 
+    @Resource
+    private com.xcw.picturebackend.manager.social.UserOnlineManager userOnlineManager;
+
     /**
      * 用户注册接口
      */
@@ -89,6 +92,20 @@ public class UserController {
     public BaseResponse<LoginUserVO> getLoginUser(HttpServletRequest request) {
         User loginUser = userService.getLoginUser(request);
         return ResultUtils.success(userService.getLoginUserVO(loginUser));
+    }
+
+    /**
+     * 在线心跳：客户端建议 60s 一次，后端将 TTL 保持在 120s
+     */
+    @PostMapping("/heartbeat")
+    public BaseResponse<Boolean> heartbeat(HttpServletRequest request) {
+        try {
+            User loginUser = userService.getLoginUser(request);
+            userOnlineManager.heartbeat(loginUser.getId());
+            return ResultUtils.success(true);
+        } catch (Exception e) {
+            return ResultUtils.success(false);
+        }
     }
 
     /**
@@ -219,6 +236,23 @@ public class UserController {
         // 调用 service 层的方法进行会员兑换
         boolean result = userService.exchangeVip(loginUser, vipCode);
         return ResultUtils.success(result);
+    }
+
+    /**
+     * 查询当前登录用户的隐私设置（6 个布尔位）。
+     */
+    @GetMapping("/privacy/my")
+    public BaseResponse<UserVO> getMyPrivacy(HttpServletRequest request) {
+        return ResultUtils.success(userService.getMyPrivacy(request));
+    }
+
+    /**
+     * 更新当前登录用户的隐私设置：字段为 null 表示保持不变。
+     */
+    @PostMapping("/privacy/update")
+    public BaseResponse<UserVO> updateMyPrivacy(@RequestBody UserPrivacyUpdateRequest req,
+                                                HttpServletRequest request) {
+        return ResultUtils.success(userService.updateMyPrivacy(req, request));
     }
 
     /**

@@ -18,5 +18,11 @@ public class FavoriteQueryRequest extends PageRequest implements Serializable {
      */
     private Integer targetType;
 
+    /**
+     * 可选：查询指定用户的收藏列表（若为空或等于当前登录用户则返回「我的收藏」）。
+     * 查看他人的收藏列表时，服务端会根据 {@code user.showFavoriteList} 做隐私校验。
+     */
+    private Long userId;
+
     private static final long serialVersionUID = 1L;
 }

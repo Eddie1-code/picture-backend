@@ -108,6 +108,16 @@ public class User implements Serializable {
     private Integer showFansList;
 
     /**
+     * 是否公开「喜欢」列表：1-展示 0-隐藏
+     */
+    private Integer showLikeList;
+
+    /**
+     * 是否公开「收藏」列表：1-展示 0-隐藏
+     */
+    private Integer showFavoriteList;
+
+    /**
      * 个性签名
      */
     private String personalSign;

@@ -15,6 +15,7 @@ import com.xcw.picturebackend.exception.BusinessException;
 import com.xcw.picturebackend.exception.ErrorCode;
 import com.xcw.picturebackend.exception.ThrowUtils;
 import com.xcw.picturebackend.manager.auth.StpKit;
+import com.xcw.picturebackend.model.dto.user.UserPrivacyUpdateRequest;
 import com.xcw.picturebackend.model.dto.user.UserQueryRequest;
 import com.xcw.picturebackend.model.dto.user.UserRegisterRequest;
 import com.xcw.picturebackend.model.dto.user.UserUpdateRequest;
@@ -445,6 +446,63 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         }
         //返回脱敏后的用户信息
         return this.getUserVO(updatedUser);
+    }
+
+    // ========== 隐私开关 ==========
+
+    @Override
+    public UserVO getMyPrivacy(HttpServletRequest request) {
+        User loginUser = this.getLoginUser(request);
+        ThrowUtils.throwIf(loginUser == null, ErrorCode.NOT_LOGIN_ERROR);
+        // 重新读一次，保证拿到最新 flags（登录态缓存的可能是登录瞬间的快照）
+        User fresh = this.getById(loginUser.getId());
+        return this.getUserVO(fresh != null ? fresh : loginUser);
+    }
+
+    @Override
+    public UserVO updateMyPrivacy(UserPrivacyUpdateRequest req, HttpServletRequest servletRequest) {
+        ThrowUtils.throwIf(req == null, ErrorCode.PARAMS_ERROR);
+        User loginUser = this.getLoginUser(servletRequest);
+        ThrowUtils.throwIf(loginUser == null, ErrorCode.NOT_LOGIN_ERROR);
+
+        User toUpdate = new User();
+        toUpdate.setId(loginUser.getId());
+        boolean hasChange = false;
+        if (req.getAllowPrivateChat() != null) {
+            toUpdate.setAllowPrivateChat(normalizeBit(req.getAllowPrivateChat()));
+            hasChange = true;
+        }
+        if (req.getAllowFollow() != null) {
+            toUpdate.setAllowFollow(normalizeBit(req.getAllowFollow()));
+            hasChange = true;
+        }
+        if (req.getShowFollowList() != null) {
+            toUpdate.setShowFollowList(normalizeBit(req.getShowFollowList()));
+            hasChange = true;
+        }
+        if (req.getShowFansList() != null) {
+            toUpdate.setShowFansList(normalizeBit(req.getShowFansList()));
+            hasChange = true;
+        }
+        if (req.getShowLikeList() != null) {
+            toUpdate.setShowLikeList(normalizeBit(req.getShowLikeList()));
+            hasChange = true;
+        }
+        if (req.getShowFavoriteList() != null) {
+            toUpdate.setShowFavoriteList(normalizeBit(req.getShowFavoriteList()));
+            hasChange = true;
+        }
+        if (hasChange) {
+            boolean ok = this.updateById(toUpdate);
+            ThrowUtils.throwIf(!ok, ErrorCode.OPERATION_ERROR, "隐私设置保存失败");
+        }
+        User fresh = this.getById(loginUser.getId());
+        return this.getUserVO(fresh != null ? fresh : loginUser);
+    }
+
+    private static Integer normalizeBit(Integer v) {
+        if (v == null) return null;
+        return v != 0 ? 1 : 0;
     }
 }
 

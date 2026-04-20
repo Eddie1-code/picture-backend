@@ -1,6 +1,7 @@
 package com.xcw.picturebackend.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.xcw.picturebackend.model.dto.user.UserPrivacyUpdateRequest;
 import com.xcw.picturebackend.model.dto.user.UserQueryRequest;
 import com.xcw.picturebackend.model.dto.user.UserRegisterRequest;
 import com.xcw.picturebackend.model.dto.user.UserUpdateRequest;
@@ -114,4 +115,14 @@ public interface UserService extends IService<User> {
      * @return 是否兑换成功
      */
     boolean exchangeVip(User user, String vipCode);
+
+    /**
+     * 当前登录用户的隐私开关查询（6 个布尔位）。
+     */
+    UserVO getMyPrivacy(HttpServletRequest request);
+
+    /**
+     * 当前登录用户的隐私开关更新：null 字段保持不变。
+     */
+    UserVO updateMyPrivacy(UserPrivacyUpdateRequest request, HttpServletRequest servletRequest);
 }

@@ -9,12 +9,16 @@ import com.xcw.picturebackend.constant.UserConstant;
 import com.xcw.picturebackend.exception.BusinessException;
 import com.xcw.picturebackend.exception.ErrorCode;
 import com.xcw.picturebackend.exception.ThrowUtils;
+import com.xcw.picturebackend.manager.social.InteractionEvent;
 import com.xcw.picturebackend.manager.social.InteractionLockManager;
+import com.xcw.picturebackend.manager.social.InteractionStreamProducer;
+import com.xcw.picturebackend.manager.social.UnreadRedisManager;
 import com.xcw.picturebackend.mapper.CommentsMapper;
 import com.xcw.picturebackend.model.dto.comment.CommentAddRequest;
 import com.xcw.picturebackend.model.dto.comment.CommentQueryRequest;
 import com.xcw.picturebackend.model.entity.Comments;
 import com.xcw.picturebackend.model.entity.Picture;
+import com.xcw.picturebackend.model.entity.Post;
 import com.xcw.picturebackend.model.entity.Space;
 import com.xcw.picturebackend.model.entity.User;
 import com.xcw.picturebackend.model.enums.TargetTypeEnum;
@@ -22,9 +26,11 @@ import com.xcw.picturebackend.model.vo.CommentVO;
 import com.xcw.picturebackend.model.vo.UserVO;
 import com.xcw.picturebackend.service.CommentsService;
 import com.xcw.picturebackend.service.PictureService;
+import com.xcw.picturebackend.service.PostService;
 import com.xcw.picturebackend.service.SpaceService;
 import com.xcw.picturebackend.service.UserService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -56,10 +62,20 @@ public class CommentsServiceImpl extends ServiceImpl<CommentsMapper, Comments>
     private InteractionLockManager interactionLockManager;
 
     @Resource
+    private UnreadRedisManager unreadRedisManager;
+
+    @Resource
+    private InteractionStreamProducer interactionStreamProducer;
+
+    @Resource
     private UserService userService;
 
     @Resource
     private PictureService pictureService;
+
+    @Lazy
+    @Resource
+    private PostService postService;
 
     @Resource
     private SpaceService spaceService;
@@ -94,6 +110,13 @@ public class CommentsServiceImpl extends ServiceImpl<CommentsMapper, Comments>
                 throw new BusinessException(ErrorCode.FORBIDDEN_ERROR, "作者已关闭评论");
             }
             targetUserId = p.getUserId();
+        } else if (TargetTypeEnum.POST.getValue() == targetType) {
+            Post post = postService.getById(targetId);
+            ThrowUtils.throwIf(post == null, ErrorCode.NOT_FOUND_ERROR, "帖子不存在");
+            if (post.getAllowComment() != null && post.getAllowComment() == 0) {
+                throw new BusinessException(ErrorCode.FORBIDDEN_ERROR, "作者已关闭评论");
+            }
+            targetUserId = post.getUserId();
         } else if (TargetTypeEnum.SPACE.getValue() == targetType) {
             Space s = spaceService.getById(targetId);
             ThrowUtils.throwIf(s == null, ErrorCode.NOT_FOUND_ERROR, "空间不存在");
@@ -145,13 +168,27 @@ public class CommentsServiceImpl extends ServiceImpl<CommentsMapper, Comments>
         boolean ok = this.save(entity);
         ThrowUtils.throwIf(!ok, ErrorCode.OPERATION_ERROR, "评论失败");
 
-        // 只在顶级评论时更新 picture.commentCount
+        // 只在顶级评论时更新对应目标的 commentCount
         if (isTopLevel && TargetTypeEnum.PICTURE.getValue() == targetType) {
             pictureService.lambdaUpdate()
                     .eq(Picture::getId, targetId)
                     .setSql("commentCount = GREATEST(0, IFNULL(commentCount,0) + 1)")
                     .update();
+        } else if (isTopLevel && TargetTypeEnum.POST.getValue() == targetType) {
+            postService.lambdaUpdate()
+                    .eq(Post::getId, targetId)
+                    .setSql("commentCount = GREATEST(0, IFNULL(commentCount,0) + 1)")
+                    .update();
         }
+
+        // 通知未读：评论收件人（回复 -> 被回复者；否则 -> 内容作者）非自己时累加
+        Long notifyTargetUid = replyToUserId != null ? replyToUserId : targetUserId;
+        if (notifyTargetUid != null && !notifyTargetUid.equals(userId)) {
+            unreadRedisManager.incComment(notifyTargetUid);
+        }
+        interactionStreamProducer.publish(InteractionEvent.of(
+                InteractionEvent.TYPE_COMMENT, userId, notifyTargetUid, targetType, targetId
+        ));
 
         // 构造 VO
         CommentVO vo = CommentVO.objToVo(entity);
@@ -190,10 +227,15 @@ public class CommentsServiceImpl extends ServiceImpl<CommentsMapper, Comments>
             this.lambdaUpdate()
                     .eq(Comments::getRootCommentId, commentId)
                     .remove();
-            // picture 计数递减
+            // 目标 commentCount 递减
             if (TargetTypeEnum.PICTURE.getValue() == c.getTargetType()) {
                 pictureService.lambdaUpdate()
                         .eq(Picture::getId, c.getTargetId())
+                        .setSql("commentCount = GREATEST(0, IFNULL(commentCount,0) - 1)")
+                        .update();
+            } else if (TargetTypeEnum.POST.getValue() == c.getTargetType()) {
+                postService.lambdaUpdate()
+                        .eq(Post::getId, c.getTargetId())
                         .setSql("commentCount = GREATEST(0, IFNULL(commentCount,0) - 1)")
                         .update();
             }

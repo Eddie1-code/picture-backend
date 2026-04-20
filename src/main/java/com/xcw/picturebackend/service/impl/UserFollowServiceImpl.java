@@ -9,7 +9,10 @@ import com.xcw.picturebackend.constant.SocialRedisKey;
 import com.xcw.picturebackend.exception.BusinessException;
 import com.xcw.picturebackend.exception.ErrorCode;
 import com.xcw.picturebackend.exception.ThrowUtils;
+import com.xcw.picturebackend.manager.social.InteractionEvent;
 import com.xcw.picturebackend.manager.social.InteractionLockManager;
+import com.xcw.picturebackend.manager.social.InteractionStreamProducer;
+import com.xcw.picturebackend.manager.social.UnreadRedisManager;
 import com.xcw.picturebackend.mapper.UserFollowMapper;
 import com.xcw.picturebackend.model.dto.userfollow.FollowActionRequest;
 import com.xcw.picturebackend.model.dto.userfollow.FollowListRequest;
@@ -52,6 +55,12 @@ public class UserFollowServiceImpl extends ServiceImpl<UserFollowMapper, UserFol
     @Resource
     private StringRedisTemplate stringRedisTemplate;
 
+    @Resource
+    private UnreadRedisManager unreadRedisManager;
+
+    @Resource
+    private InteractionStreamProducer interactionStreamProducer;
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean toggleFollow(FollowActionRequest request, User loginUser) {
@@ -89,6 +98,14 @@ public class UserFollowServiceImpl extends ServiceImpl<UserFollowMapper, UserFol
 
         // 缓存维护
         invalidateFollowCache(followerId, followingId);
+
+        // 新关注时给被关注者累加一条未读
+        if (follow) {
+            unreadRedisManager.incFollow(followingId);
+            interactionStreamProducer.publish(InteractionEvent.of(
+                    InteractionEvent.TYPE_FOLLOW, followerId, followingId, 0, followingId
+            ));
+        }
         return follow;
     }
 
@@ -109,6 +126,27 @@ public class UserFollowServiceImpl extends ServiceImpl<UserFollowMapper, UserFol
                 : (loginUser != null ? loginUser.getId() : null);
         ThrowUtils.throwIf(targetUserId == null, ErrorCode.PARAMS_ERROR, "未指定用户");
         String type = StrUtil.isBlank(request.getType()) ? "following" : request.getType();
+
+        // 隐私校验：查看他人主页的关注/粉丝时，必须尊重目标用户的公开位
+        boolean isMe = loginUser != null && loginUser.getId() != null
+                && loginUser.getId().equals(targetUserId);
+        if (!isMe) {
+            User targetUser = userService.getById(targetUserId);
+            if (targetUser != null) {
+                boolean isFollowingType = "following".equalsIgnoreCase(type);
+                Integer flag = isFollowingType ? targetUser.getShowFollowList() : targetUser.getShowFansList();
+                if (flag != null && flag == 0) {
+                    // 对方隐藏：返回空页，不抛错，前端自己降级提示
+                    Page<UserFollowVO> empty = new Page<>(
+                            Math.max(1, request.getCurrent()),
+                            Math.min(FOLLOW_MAX_PAGE_SIZE, Math.max(1, request.getPageSize())),
+                            0
+                    );
+                    empty.setRecords(Collections.emptyList());
+                    return empty;
+                }
+            }
+        }
 
         long current = Math.max(1, request.getCurrent());
         long size = Math.min(FOLLOW_MAX_PAGE_SIZE, Math.max(1, request.getPageSize()));

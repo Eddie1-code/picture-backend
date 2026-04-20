@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.xcw.picturebackend.constant.SocialRedisKey;
 import com.xcw.picturebackend.exception.ErrorCode;
+import com.xcw.picturebackend.manager.social.UnreadRedisManager;
 import com.xcw.picturebackend.exception.ThrowUtils;
 import com.xcw.picturebackend.mapper.CommentsMapper;
 import com.xcw.picturebackend.mapper.FavoriteRecordMapper;
@@ -87,11 +88,22 @@ public class NotifyServiceImpl implements NotifyService {
     @Resource
     private StringRedisTemplate stringRedisTemplate;
 
+    @Resource
+    private UnreadRedisManager unreadRedisManager;
+
     @Override
     public NotifyUnreadVO getUnreadSummary(User loginUser) {
         ThrowUtils.throwIf(loginUser == null, ErrorCode.NOT_LOGIN_ERROR);
         Long uid = loginUser.getId();
 
+        // 1) 优先从 Redis Hash 读取聚合未读
+        Map<String, Long> cached = unreadRedisManager.getAll(uid);
+        if (cached != null) {
+            NotifyUnreadVO vo = buildVoFromMap(cached);
+            return vo;
+        }
+
+        // 2) 缓存未命中：回源 DB 统计
         long likeCount = likeRecordMapper.selectCount(new LambdaQueryWrapper<LikeRecord>()
                 .eq(LikeRecord::getTargetUserId, uid)
                 .eq(LikeRecord::getIsLiked, 1)
@@ -103,7 +115,7 @@ public class NotifyServiceImpl implements NotifyService {
                 .eq(FavoriteRecord::getIsRead, 0));
 
         long commentCount = commentsMapper.selectCount(new LambdaQueryWrapper<Comments>()
-                .eq(Comments::getTargetUserId, uid)
+                .and(w -> w.eq(Comments::getTargetUserId, uid).or().eq(Comments::getReplyToUserId, uid))
                 .ne(Comments::getUserId, uid)
                 .eq(Comments::getIsRead, 0)
                 .eq(Comments::getIsDelete, 0));
@@ -124,7 +136,16 @@ public class NotifyServiceImpl implements NotifyService {
         vo.setSystemCount(systemCount);
         vo.setTotalCount(likeCount + commentCount + favCount + followCount + systemCount);
 
-        // 写入 Redis 一份，便于轻量查询
+        // 3) 写回 Redis（chat 由 ChatService 自行维护）
+        Map<String, Long> fresh = new java.util.HashMap<>(6);
+        fresh.put(SocialRedisKey.UNREAD_FIELD_LIKE, likeCount);
+        fresh.put(SocialRedisKey.UNREAD_FIELD_FAVORITE, favCount);
+        fresh.put(SocialRedisKey.UNREAD_FIELD_COMMENT, commentCount);
+        fresh.put(SocialRedisKey.UNREAD_FIELD_FOLLOW, followCount);
+        fresh.put(SocialRedisKey.UNREAD_FIELD_SYSTEM, systemCount);
+        unreadRedisManager.putAll(uid, fresh);
+
+        // 兼容老字段：保留系统未读单值 key（已有调用方可能用）
         try {
             stringRedisTemplate.opsForValue().set(
                     SocialRedisKey.unreadSystemNotifyKey(uid),
@@ -132,6 +153,23 @@ public class NotifyServiceImpl implements NotifyService {
                     60L, TimeUnit.SECONDS);
         } catch (Exception ignored) {
         }
+        return vo;
+    }
+
+    private NotifyUnreadVO buildVoFromMap(Map<String, Long> cached) {
+        long like = cached.getOrDefault(SocialRedisKey.UNREAD_FIELD_LIKE, 0L);
+        long fav = cached.getOrDefault(SocialRedisKey.UNREAD_FIELD_FAVORITE, 0L);
+        long comment = cached.getOrDefault(SocialRedisKey.UNREAD_FIELD_COMMENT, 0L);
+        long follow = cached.getOrDefault(SocialRedisKey.UNREAD_FIELD_FOLLOW, 0L);
+        long system = cached.getOrDefault(SocialRedisKey.UNREAD_FIELD_SYSTEM, 0L);
+        NotifyUnreadVO vo = new NotifyUnreadVO();
+        vo.setLikeCount(like);
+        vo.setFavoriteCount(fav);
+        vo.setCommentCount(comment);
+        vo.setFollowCount(follow);
+        vo.setSystemCount(system);
+        // total 仅聚合站内消息（不含 chat），与旧版保持一致
+        vo.setTotalCount(like + fav + comment + follow + system);
         return vo;
     }
 
@@ -167,6 +205,26 @@ public class NotifyServiceImpl implements NotifyService {
         NotifyTypeEnum type = NotifyTypeEnum.from(notifyType);
         ThrowUtils.throwIf(type == null, ErrorCode.PARAMS_ERROR);
         Long uid = loginUser.getId();
+        // 先按类型将 Redis Hash 对应字段清零，失效策略交由下次 getUnreadSummary 重建
+        switch (type) {
+            case LIKE:
+                unreadRedisManager.clearField(uid, SocialRedisKey.UNREAD_FIELD_LIKE);
+                break;
+            case FAVORITE:
+                unreadRedisManager.clearField(uid, SocialRedisKey.UNREAD_FIELD_FAVORITE);
+                break;
+            case COMMENT:
+                unreadRedisManager.clearField(uid, SocialRedisKey.UNREAD_FIELD_COMMENT);
+                break;
+            case FOLLOW:
+                unreadRedisManager.clearField(uid, SocialRedisKey.UNREAD_FIELD_FOLLOW);
+                break;
+            case SYSTEM:
+                unreadRedisManager.clearField(uid, SocialRedisKey.UNREAD_FIELD_SYSTEM);
+                break;
+            default:
+                break;
+        }
         switch (type) {
             case LIKE:
                 LikeRecord lr = new LikeRecord();
@@ -186,7 +244,8 @@ public class NotifyServiceImpl implements NotifyService {
                 Comments c = new Comments();
                 c.setIsRead(1);
                 commentsMapper.update(c, new LambdaQueryWrapper<Comments>()
-                        .eq(Comments::getTargetUserId, uid)
+                        .and(w -> w.eq(Comments::getTargetUserId, uid).or().eq(Comments::getReplyToUserId, uid))
+                        .ne(Comments::getUserId, uid)
                         .eq(Comments::getIsRead, 0)
                         .eq(Comments::getIsDelete, 0));
                 return true;
@@ -212,33 +271,44 @@ public class NotifyServiceImpl implements NotifyService {
         NotifyTypeEnum type = NotifyTypeEnum.from(notifyType);
         ThrowUtils.throwIf(type == null, ErrorCode.PARAMS_ERROR);
         Long uid = loginUser.getId();
+        boolean affected = false;
         switch (type) {
             case LIKE:
                 LikeRecord lr = new LikeRecord();
                 lr.setIsRead(1);
-                return likeRecordMapper.update(lr, new LambdaQueryWrapper<LikeRecord>()
+                affected = likeRecordMapper.update(lr, new LambdaQueryWrapper<LikeRecord>()
                         .eq(LikeRecord::getId, bizId)
                         .eq(LikeRecord::getTargetUserId, uid)) > 0;
+                if (affected) unreadRedisManager.invalidate(uid);
+                return affected;
             case FAVORITE:
                 FavoriteRecord fr = new FavoriteRecord();
                 fr.setIsRead(1);
-                return favoriteRecordMapper.update(fr, new LambdaQueryWrapper<FavoriteRecord>()
+                affected = favoriteRecordMapper.update(fr, new LambdaQueryWrapper<FavoriteRecord>()
                         .eq(FavoriteRecord::getId, bizId)
                         .eq(FavoriteRecord::getTargetUserId, uid)) > 0;
+                if (affected) unreadRedisManager.invalidate(uid);
+                return affected;
             case COMMENT:
                 Comments c = new Comments();
                 c.setIsRead(1);
-                return commentsMapper.update(c, new LambdaQueryWrapper<Comments>()
+                affected = commentsMapper.update(c, new LambdaQueryWrapper<Comments>()
                         .eq(Comments::getCommentId, bizId)
-                        .eq(Comments::getTargetUserId, uid)) > 0;
+                        .and(w -> w.eq(Comments::getTargetUserId, uid).or().eq(Comments::getReplyToUserId, uid))) > 0;
+                if (affected) unreadRedisManager.invalidate(uid);
+                return affected;
             case FOLLOW:
                 UserFollow uf = new UserFollow();
                 uf.setIsRead(1);
-                return userFollowMapper.update(uf, new LambdaQueryWrapper<UserFollow>()
+                affected = userFollowMapper.update(uf, new LambdaQueryWrapper<UserFollow>()
                         .eq(UserFollow::getFollowId, bizId)
                         .eq(UserFollow::getFollowingId, uid)) > 0;
+                if (affected) unreadRedisManager.invalidate(uid);
+                return affected;
             case SYSTEM:
-                return markSystemNotifyRead(uid, bizId);
+                affected = markSystemNotifyRead(uid, bizId);
+                if (affected) unreadRedisManager.invalidate(uid);
+                return affected;
             default:
                 return false;
         }
@@ -322,7 +392,7 @@ public class NotifyServiceImpl implements NotifyService {
     private IPage<NotifyItemVO> listCommentMessages(Long uid, long current, long size, boolean onlyUnread) {
         Page<Comments> page = new Page<>(current, size);
         LambdaQueryWrapper<Comments> qw = new LambdaQueryWrapper<Comments>()
-                .eq(Comments::getTargetUserId, uid)
+                .and(w -> w.eq(Comments::getTargetUserId, uid).or().eq(Comments::getReplyToUserId, uid))
                 .ne(Comments::getUserId, uid)
                 .eq(Comments::getIsDelete, 0)
                 .orderByDesc(Comments::getCreateTime);
@@ -351,7 +421,8 @@ public class NotifyServiceImpl implements NotifyService {
             tc.fill(vo, r.getTargetType(), r.getTargetId());
             String snippet = r.getContent() == null ? "" :
                     (r.getContent().length() > 40 ? r.getContent().substring(0, 40) + "…" : r.getContent());
-            String action = r.getParentCommentId() != null && r.getParentCommentId() > 0 ? "回复了你：" : "评论了你的" + targetTypeText(r.getTargetType()) + "：";
+            boolean isReplyToMe = r.getReplyToUserId() != null && r.getReplyToUserId().equals(uid);
+            String action = isReplyToMe ? "回复了你：" : "评论了你的" + targetTypeText(r.getTargetType()) + "：";
             vo.setText(action + snippet);
             return vo;
         }).collect(Collectors.toList());

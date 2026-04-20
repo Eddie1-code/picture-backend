@@ -90,6 +90,40 @@ public class UserVO implements Serializable {
      */
     private Boolean isMutualFollow;
 
+    // ========== 隐私开关（浏览者视角） ==========
+    // 当查看者不是本人时，这些位用于前端决定 Tab 是否可见；
+    // 当查看者为本人时，如实反映用户设置，用于「隐私设置」界面回显。
+
+    /**
+     * 是否允许私聊
+     */
+    private Integer allowPrivateChat;
+
+    /**
+     * 是否允许被关注
+     */
+    private Integer allowFollow;
+
+    /**
+     * 是否公开关注列表
+     */
+    private Integer showFollowList;
+
+    /**
+     * 是否公开粉丝列表
+     */
+    private Integer showFansList;
+
+    /**
+     * 是否公开「喜欢」列表
+     */
+    private Integer showLikeList;
+
+    /**
+     * 是否公开「收藏」列表
+     */
+    private Integer showFavoriteList;
+
     private static final long serialVersionUID = 1L;
 }
 
