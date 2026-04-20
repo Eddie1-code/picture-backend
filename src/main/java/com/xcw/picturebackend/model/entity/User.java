@@ -85,6 +85,38 @@ public class User implements Serializable {
     @TableLogic
     private Integer isDelete;
 
+    // ========== 社交互动字段 ==========
+
+    /**
+     * 是否允许被私聊：1-允许 0-禁止
+     */
+    private Integer allowPrivateChat;
+
+    /**
+     * 是否允许被关注：1-允许 0-禁止
+     */
+    private Integer allowFollow;
+
+    /**
+     * 是否公开关注列表
+     */
+    private Integer showFollowList;
+
+    /**
+     * 是否公开粉丝列表
+     */
+    private Integer showFansList;
+
+    /**
+     * 个性签名
+     */
+    private String personalSign;
+
+    /**
+     * 最后活跃时间
+     */
+    private Date lastActiveTime;
+
     @TableField(exist = false) // 标记该字段不参与数据库表的映射
     private static final long serialVersionUID = 1L; // 序列化版本号，用于类的序列化和反序列化
 }

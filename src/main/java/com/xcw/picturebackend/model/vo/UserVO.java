@@ -63,6 +63,33 @@ public class UserVO implements Serializable {
      */
     private Date updateTime;
 
+    // ========== 社交字段 ==========
+
+    /**
+     * 个性签名
+     */
+    private String personalSign;
+
+    /**
+     * 关注数（我关注的人数）
+     */
+    private Long followCount;
+
+    /**
+     * 粉丝数（关注我的人数）
+     */
+    private Long fansCount;
+
+    /**
+     * 当前登录用户是否已关注 TA
+     */
+    private Boolean isFollowed;
+
+    /**
+     * 当前登录用户与 TA 是否互相关注
+     */
+    private Boolean isMutualFollow;
+
     private static final long serialVersionUID = 1L;
 }
 

@@ -113,6 +113,63 @@ public class PictureVO implements Serializable {
      */
     private List<String> permissionList = new ArrayList<>();
 
+    // ========== 社交互动字段 ==========
+
+    /**
+     * 点赞数
+     */
+    private Long likeCount;
+
+    /**
+     * 评论数
+     */
+    private Long commentCount;
+
+    /**
+     * 收藏数
+     */
+    private Long favoriteCount;
+
+    /**
+     * 浏览量
+     */
+    private Long viewCount;
+
+    /**
+     * 分享数
+     */
+    private Long shareCount;
+
+    /**
+     * 是否允许点赞
+     */
+    private Integer allowLike;
+
+    /**
+     * 是否允许评论
+     */
+    private Integer allowComment;
+
+    /**
+     * 是否允许收藏
+     */
+    private Integer allowCollect;
+
+    /**
+     * 是否允许分享
+     */
+    private Integer allowShare;
+
+    /**
+     * 当前登录用户是否已点赞
+     */
+    private Boolean isLiked;
+
+    /**
+     * 当前登录用户是否已收藏
+     */
+    private Boolean isFavorite;
+
     private static final long serialVersionUID = 1L;
 
     /**

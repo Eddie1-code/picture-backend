@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xcw.picturebackend.mapper.UserFollowMapper">
+
+    <resultMap id="BaseResultMap" type="com.xcw.picturebackend.model.entity.UserFollow">
+        <id property="followId" column="followId" jdbcType="BIGINT"/>
+        <result property="followerId" column="followerId" jdbcType="BIGINT"/>
+        <result property="followingId" column="followingId" jdbcType="BIGINT"/>
+        <result property="followStatus" column="followStatus" jdbcType="TINYINT"/>
+        <result property="isMutual" column="isMutual" jdbcType="TINYINT"/>
+        <result property="isRead" column="isRead" jdbcType="TINYINT"/>
+        <result property="lastInteractionTime" column="lastInteractionTime" jdbcType="TIMESTAMP"/>
+        <result property="createTime" column="createTime" jdbcType="TIMESTAMP"/>
+        <result property="updateTime" column="updateTime" jdbcType="TIMESTAMP"/>
+        <result property="isDelete" column="isDelete" jdbcType="TINYINT"/>
+    </resultMap>
+
+    <!--
+        依赖唯一键 uk_follower_following (followerId, followingId)
+    -->
+    <insert id="upsertFollow">
+        INSERT INTO userfollows (followerId, followingId, followStatus, isMutual, isRead,
+                                 lastInteractionTime, createTime, updateTime, isDelete)
+        VALUES (#{followerId}, #{followingId}, #{followStatus}, 0, 0,
+                NOW(), NOW(), NOW(), 0)
+        ON DUPLICATE KEY UPDATE
+            followStatus        = #{followStatus},
+            lastInteractionTime = NOW(),
+            isDelete            = 0,
+            isRead              = IF(#{followStatus} = 1, 0, isRead)
+    </insert>
+
+    <select id="listFollowingIds" resultType="java.lang.Long">
+        SELECT followingId
+        FROM userfollows
+        WHERE followerId = #{followerId}
+          AND followStatus = 1
+          AND isDelete = 0
+    </select>
+
+    <select id="listFollowerIds" resultType="java.lang.Long">
+        SELECT followerId
+        FROM userfollows
+        WHERE followingId = #{followingId}
+          AND followStatus = 1
+          AND isDelete = 0
+    </select>
+
+    <update id="updateMutualFlag">
+        UPDATE userfollows
+        SET isMutual = #{isMutual}
+        WHERE isDelete = 0
+          AND ((followerId = #{userAId} AND followingId = #{userBId})
+            OR (followerId = #{userBId} AND followingId = #{userAId}))
+    </update>
+
+</mapper>

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xcw.picturebackend.mapper.FavoriteRecordMapper">
+
+    <resultMap id="BaseResultMap" type="com.xcw.picturebackend.model.entity.FavoriteRecord">
+        <id property="id" column="id" jdbcType="BIGINT"/>
+        <result property="userId" column="userId" jdbcType="BIGINT"/>
+        <result property="targetId" column="targetId" jdbcType="BIGINT"/>
+        <result property="targetType" column="targetType" jdbcType="TINYINT"/>
+        <result property="targetUserId" column="targetUserId" jdbcType="BIGINT"/>
+        <result property="isFavorite" column="isFavorite" jdbcType="TINYINT"/>
+        <result property="favoriteTime" column="favoriteTime" jdbcType="TIMESTAMP"/>
+        <result property="isRead" column="isRead" jdbcType="TINYINT"/>
+        <result property="createTime" column="createTime" jdbcType="TIMESTAMP"/>
+        <result property="updateTime" column="updateTime" jdbcType="TIMESTAMP"/>
+        <result property="isDelete" column="isDelete" jdbcType="TINYINT"/>
+    </resultMap>
+
+    <insert id="upsertFavorite">
+        INSERT INTO favorite_record (userId, targetId, targetType, targetUserId, isFavorite,
+                                     favoriteTime, isRead)
+        VALUES (#{userId}, #{targetId}, #{targetType}, #{targetUserId}, #{isFavorite},
+                NOW(), 0)
+        ON DUPLICATE KEY UPDATE
+            isFavorite   = #{isFavorite},
+            favoriteTime = IF(#{isFavorite} = 1, NOW(), favoriteTime),
+            isRead       = IF(#{isFavorite} = 1, 0, isRead),
+            isDelete     = 0
+    </insert>
+
+    <select id="listFavoriteTargetIds" resultType="java.lang.Long">
+        SELECT targetId
+        FROM favorite_record
+        WHERE userId = #{userId}
+          AND targetType = #{targetType}
+          AND isFavorite = 1
+          AND isDelete = 0
+          AND targetId IN
+        <foreach collection="targetIds" item="tid" open="(" close=")" separator=",">
+            #{tid}
+        </foreach>
+    </select>
+
+</mapper>

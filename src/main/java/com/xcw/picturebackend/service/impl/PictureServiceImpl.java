@@ -27,6 +27,9 @@ import com.xcw.picturebackend.model.entity.Picture;
 import com.xcw.picturebackend.model.entity.Space;
 import com.xcw.picturebackend.model.entity.User;
 import com.xcw.picturebackend.model.enums.PictureReviewStatusEnum;
+import com.xcw.picturebackend.model.enums.TargetTypeEnum;
+import com.xcw.picturebackend.service.LikeRecordService;
+import com.xcw.picturebackend.service.FavoriteRecordService;
 import com.xcw.picturebackend.model.vo.PictureBatchFetchCandidateVO;
 import com.xcw.picturebackend.model.vo.PictureVO;
 import com.xcw.picturebackend.model.vo.UserVO;
@@ -97,6 +100,14 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
 
     @Autowired
     private CosManager cosManager;
+
+    @Resource
+    @org.springframework.context.annotation.Lazy
+    private LikeRecordService likeRecordService;
+
+    @Resource
+    @org.springframework.context.annotation.Lazy
+    private FavoriteRecordService favoriteRecordService;
 
 
     /**
@@ -317,13 +328,16 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
         pictureCacheManager.recordPictureAccess(picture.getId().toString());
         // 优先从热点缓存读取
         PictureVO cachedVO = pictureCacheManager.getPictureWithHotCache(picture.getId().toString());
+        PictureVO pictureVO;
         if (cachedVO != null) {
             fillPictureUserInfo(cachedVO);
-            return cachedVO;
+            pictureVO = cachedVO;
+        } else {
+            pictureVO = PictureVO.objToVo(picture);
+            fillPictureUserInfo(pictureVO);
         }
-        // 未命中热点缓存则正常脱敏处理
-        PictureVO pictureVO = PictureVO.objToVo(picture);
-        fillPictureUserInfo(pictureVO);
+        // 填充当前用户的互动态（isLiked/isFavorite）
+        fillCurrentUserInteraction(java.util.Collections.singletonList(pictureVO), request);
         return pictureVO;
     }
 
@@ -376,8 +390,42 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
             }
             pictureVO.setUser(userService.getUserVO(user));
         });
+        // 填充当前用户的互动态
+        fillCurrentUserInteraction(pictureVOList, request);
         pictureVOPage.setRecords(pictureVOList);
         return pictureVOPage;
+    }
+
+    /**
+     * 为一批 PictureVO 填充 isLiked / isFavorite（当前登录用户视角）
+     * 未登录时静默跳过。
+     */
+    private void fillCurrentUserInteraction(List<PictureVO> voList, HttpServletRequest request) {
+        if (CollUtil.isEmpty(voList) || request == null) {
+            return;
+        }
+        User loginUser;
+        try {
+            loginUser = userService.getLoginUser(request);
+        } catch (Exception ignore) {
+            return;
+        }
+        if (loginUser == null || loginUser.getId() == null) {
+            return;
+        }
+        Set<Long> ids = voList.stream().map(PictureVO::getId)
+                .filter(Objects::nonNull).collect(Collectors.toSet());
+        if (ids.isEmpty()) {
+            return;
+        }
+        Set<Long> likedIds = likeRecordService.listLikedTargetIds(
+                loginUser.getId(), TargetTypeEnum.PICTURE.getValue(), ids);
+        Set<Long> favIds = favoriteRecordService.listFavoriteTargetIds(
+                loginUser.getId(), TargetTypeEnum.PICTURE.getValue(), ids);
+        for (PictureVO vo : voList) {
+            vo.setIsLiked(likedIds.contains(vo.getId()));
+            vo.setIsFavorite(favIds.contains(vo.getId()));
+        }
     }
 
     /**

@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xcw.picturebackend.mapper.LikeRecordMapper">
+
+    <resultMap id="BaseResultMap" type="com.xcw.picturebackend.model.entity.LikeRecord">
+        <id property="id" column="id" jdbcType="BIGINT"/>
+        <result property="userId" column="userId" jdbcType="BIGINT"/>
+        <result property="targetId" column="targetId" jdbcType="BIGINT"/>
+        <result property="targetType" column="targetType" jdbcType="TINYINT"/>
+        <result property="targetUserId" column="targetUserId" jdbcType="BIGINT"/>
+        <result property="isLiked" column="isLiked" jdbcType="TINYINT"/>
+        <result property="firstLikeTime" column="firstLikeTime" jdbcType="TIMESTAMP"/>
+        <result property="lastLikeTime" column="lastLikeTime" jdbcType="TIMESTAMP"/>
+        <result property="isRead" column="isRead" jdbcType="TINYINT"/>
+    </resultMap>
+
+    <!--
+        依赖唯一键 uk_user_target (userId, targetId, targetType)
+        INSERT=1，已存在且字段改变=2，无变化=0
+    -->
+    <insert id="upsertLike">
+        INSERT INTO like_record (userId, targetId, targetType, targetUserId, isLiked,
+                                 firstLikeTime, lastLikeTime, isRead)
+        VALUES (#{userId}, #{targetId}, #{targetType}, #{targetUserId}, #{isLiked},
+                NOW(), NOW(), 0)
+        ON DUPLICATE KEY UPDATE
+            isLiked      = #{isLiked},
+            lastLikeTime = NOW(),
+            isRead       = IF(#{isLiked} = 1, 0, isRead)
+    </insert>
+
+    <select id="listLikedTargetIds" resultType="java.lang.Long">
+        SELECT targetId
+        FROM like_record
+        WHERE userId = #{userId}
+          AND targetType = #{targetType}
+          AND isLiked = 1
+          AND targetId IN
+        <foreach collection="targetIds" item="tid" open="(" close=")" separator=",">
+            #{tid}
+        </foreach>
+    </select>
+
+    <select id="countLikes" resultType="java.util.Map">
+        SELECT targetId AS targetId, COUNT(*) AS cnt
+        FROM like_record
+        WHERE targetType = #{targetType}
+          AND isLiked = 1
+          AND targetId IN
+        <foreach collection="targetIds" item="tid" open="(" close=")" separator=",">
+            #{tid}
+        </foreach>
+        GROUP BY targetId
+    </select>
+
+</mapper>

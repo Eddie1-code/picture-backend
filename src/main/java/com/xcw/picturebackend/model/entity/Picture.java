@@ -126,6 +126,58 @@ public class Picture implements Serializable {
     @TableLogic
     private Integer isDelete;
 
+    // ========== 社交互动字段 ==========
+
+    /**
+     * 点赞数
+     */
+    private Long likeCount;
+
+    /**
+     * 评论数
+     */
+    private Long commentCount;
+
+    /**
+     * 收藏数
+     */
+    private Long favoriteCount;
+
+    /**
+     * 浏览量
+     */
+    private Long viewCount;
+
+    /**
+     * 分享数
+     */
+    private Long shareCount;
+
+    /**
+     * 是否允许点赞：1-允许 0-禁止
+     */
+    private Integer allowLike;
+
+    /**
+     * 是否允许评论：1-允许 0-禁止
+     */
+    private Integer allowComment;
+
+    /**
+     * 是否允许收藏：1-允许 0-禁止
+     */
+    private Integer allowCollect;
+
+    /**
+     * 是否允许分享：1-允许 0-禁止
+     */
+    private Integer allowShare;
+
+    /**
+     * 热榜分数
+     */
+    private Double hotScore;
+
     @TableField(exist = false)
     private static final long serialVersionUID = 1L;
 }
