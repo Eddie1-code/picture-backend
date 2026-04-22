@@ -4,10 +4,12 @@ import cn.hutool.core.util.StrUtil;
 import com.xcw.picturebackend.exception.BusinessException;
 import com.xcw.picturebackend.exception.ErrorCode;
 import lombok.extern.slf4j.Slf4j;
+import lombok.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.Resource;
+import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -69,5 +71,53 @@ public class RateLimitManager {
     public boolean checkOutPaintingRateLimit(Long userId) {
         // 限制单用户每分钟最多3次任务
         return checkRateLimit(userId, "out_painting:rate_limit:", 3, 60);
+    }
+
+    /**
+     * 通用限流入口（当前为滑动窗口实现，后续可平滑切到令牌桶）。
+     * <p>
+     * 调用方统一走该方法，避免业务层直接耦合具体限流算法。
+     */
+    public RateLimitDecision checkRouteUserIpRateLimit(String route,
+                                                       String userId,
+                                                       String clientIp,
+                                                       int limit,
+                                                       int windowSeconds,
+                                                       boolean failOpenOnError) {
+        String safeRoute = sanitize(route);
+        String safeUserId = sanitize(userId);
+        String safeIp = sanitize(clientIp);
+        String key = String.format("global:rate_limit:%s:%s:%s", safeRoute, safeUserId, safeIp);
+        long currentTime = System.currentTimeMillis();
+        long windowStart = currentTime - windowSeconds * 1000L;
+        try {
+            stringRedisTemplate.opsForZSet().add(key, String.valueOf(currentTime), currentTime);
+            stringRedisTemplate.opsForZSet().removeRangeByScore(key, 0, windowStart);
+            stringRedisTemplate.expire(key, windowSeconds, TimeUnit.SECONDS);
+            Long count = stringRedisTemplate.opsForZSet().zCard(key);
+            long safeCount = count == null ? 0L : count;
+            boolean allowed = safeCount <= limit;
+            return new RateLimitDecision(allowed, false, safeCount, key);
+        } catch (Exception e) {
+            log.error("全局限流检查失败, key={}", key, e);
+            return new RateLimitDecision(failOpenOnError, true, -1L, key);
+        }
+    }
+
+    private String sanitize(String value) {
+        if (StrUtil.isBlank(value)) {
+            return "unknown";
+        }
+        return value.trim()
+                .toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9:_./-]", "_");
+    }
+
+    @Value
+    public static class RateLimitDecision {
+        boolean allowed;
+        boolean degraded;
+        long count;
+        String key;
     }
 }

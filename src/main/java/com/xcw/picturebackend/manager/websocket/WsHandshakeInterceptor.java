@@ -3,9 +3,13 @@ package com.xcw.picturebackend.manager.websocket;
 
 import cn.hutool.core.util.ObjUtil;
 import cn.hutool.core.util.StrUtil;
+import com.xcw.picturebackend.config.SecurityProtectionProperties;
+import com.xcw.picturebackend.manager.RateLimitManager;
 import com.xcw.picturebackend.manager.auth.StpKit;
 import com.xcw.picturebackend.manager.auth.SpaceUserAuthManager;
 import com.xcw.picturebackend.manager.auth.model.SpaceUserPermissionConstant;
+import com.xcw.picturebackend.security.RequestIpResolver;
+import com.xcw.picturebackend.security.SecurityAlertService;
 import com.xcw.picturebackend.model.entity.Picture;
 import com.xcw.picturebackend.model.entity.Space;
 import com.xcw.picturebackend.model.entity.User;
@@ -53,6 +57,18 @@ public class WsHandshakeInterceptor implements HandshakeInterceptor {
     @Resource
     private SpaceUserAuthManager spaceUserAuthManager;
 
+    @Resource
+    private SecurityProtectionProperties securityProtectionProperties;
+
+    @Resource
+    private RateLimitManager rateLimitManager;
+
+    @Resource
+    private RequestIpResolver requestIpResolver;
+
+    @Resource
+    private SecurityAlertService securityAlertService;
+
     @Override
     public boolean beforeHandshake(@NotNull ServerHttpRequest request, @NotNull ServerHttpResponse response, @NotNull WebSocketHandler wsHandler, @NotNull Map<String, Object> attributes) {
         if (request instanceof ServletServerHttpRequest) {
@@ -99,6 +115,10 @@ public class WsHandshakeInterceptor implements HandshakeInterceptor {
                 log.error("用户未登录，拒绝握手");
                 return false;
             }
+            if (!applyHandshakeRateLimit(servletRequest, String.valueOf(loginUser.getId()))) {
+                log.warn("WebSocket 握手限流命中，拒绝握手");
+                return false;
+            }
             // 校验用户是否有该图片的权限
             Picture picture = pictureService.getById(pictureId);
             if (picture == null) {
@@ -127,6 +147,34 @@ public class WsHandshakeInterceptor implements HandshakeInterceptor {
             attributes.put("user", loginUser);
             attributes.put("userId", loginUser.getId());
             attributes.put("pictureId", Long.valueOf(pictureId)); // 记得转换为 Long 类型
+        }
+        return true;
+    }
+
+    private boolean applyHandshakeRateLimit(HttpServletRequest servletRequest, String userId) {
+        SecurityProtectionProperties.WebSocket ws = securityProtectionProperties.getWebsocket();
+        if (ws == null || !ws.isEnabled()) {
+            return true;
+        }
+        SecurityProtectionProperties.Rule rule = ws.getHandshakeRule();
+        if (rule == null) {
+            return true;
+        }
+        String clientIp = requestIpResolver.resolveClientIp(servletRequest);
+        RateLimitManager.RateLimitDecision decision = rateLimitManager.checkRouteUserIpRateLimit(
+                "WS:/ws/picture/edit",
+                userId,
+                clientIp,
+                rule.getLimit(),
+                rule.getWindowSeconds(),
+                false
+        );
+        if (decision.isDegraded()) {
+            log.warn("WebSocket 握手限流降级, userId={}, ip={}", userId, clientIp);
+        }
+        if (!decision.isAllowed()) {
+            securityAlertService.record429Event("/ws/picture/edit", userId, clientIp);
+            return false;
         }
         return true;
     }

@@ -99,3 +99,18 @@ sa-token:
   token-name: satoken
   is-read-cookie: false
   is-read-header: true
+
+security:
+  protection:
+    signature:
+      enabled: true
+      secret: ${SIGNATURE_SECRET:change-this-sign-secret}
+      allowed-timestamp-skew-seconds: 300
+      nonce-ttl-seconds: 120
+      protected-path-prefixes:
+        - /api/user/login
+        - /api/user/register
+        - /api/picture/out_painting
+        - /api/picture/upload
+        - /api/post/add
+        - /api/comment/add

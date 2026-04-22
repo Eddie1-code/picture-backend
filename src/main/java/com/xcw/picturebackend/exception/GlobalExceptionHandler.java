@@ -5,8 +5,11 @@ import cn.dev33.satoken.exception.NotPermissionException;
 import com.xcw.picturebackend.common.BaseResponse;
 import com.xcw.picturebackend.common.ResultUtils;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+import javax.servlet.http.HttpServletResponse;
 
 /**
  * 全局异常处理器
@@ -28,8 +31,13 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(BusinessException.class)
-    public BaseResponse<?> businessExceptionHandler(BusinessException e) {
+    public BaseResponse<?> businessExceptionHandler(BusinessException e, HttpServletResponse response) {
         log.error("BusinessException", e);
+        if (e.getCode() == ErrorCode.TOO_MANY_REQUEST.getCode()) {
+            response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
+        } else if (e.getCode() == ErrorCode.FORBIDDEN_ERROR.getCode()) {
+            response.setStatus(HttpStatus.FORBIDDEN.value());
+        }
         return ResultUtils.error(e.getCode(), e.getMessage());
     }
 

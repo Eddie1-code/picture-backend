@@ -77,8 +77,8 @@ public class UrlPictureUpload extends PictureUploadTemplate {
             if (StrUtil.isNotBlank(contentLengthStr)) {
                 try {
                     long contentLength = Long.parseLong(contentLengthStr);
-                    final long TWO_MB = 2 * 1024 * 1024L; // 限制文件大小为 2MB
-                    ThrowUtils.throwIf(contentLength > TWO_MB, ErrorCode.PARAMS_ERROR, "文件大小不能超过 2M");
+                    final long THREE_MB = 3 * 1024 * 1024L; // 限制文件大小为 3MB
+                    ThrowUtils.throwIf(contentLength > THREE_MB, ErrorCode.PARAMS_ERROR, "文件大小不能超过 3M");
                 } catch (NumberFormatException e) {
                     throw new BusinessException(ErrorCode.PARAMS_ERROR, "文件大小格式错误");
                 }
