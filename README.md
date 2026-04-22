@@ -505,7 +505,8 @@ erDiagram
 git clone https://github.com/EddieCww/picture.git
 cd picture
 
-# 按顺序执行 SQL
+# 按顺序执行结构脚本（DDL-only，不导入数据）
+# 注意：create_table.sql 需先执行；全量初始化完成后不要单独重复执行它
 mysql -u root -p picture < picture-backend/sql/create_table.sql
 mysql -u root -p picture < picture-backend/sql/picture.sql
 mysql -u root -p picture < picture-backend/sql/space.sql

@@ -36,3 +36,10 @@ build/
 ### Custom ###
 src/main/resources/application-local.yml
 src/main/resources/application-prod.yml
+*.jmx
+*.jtl
+*.log
+.env
+.env.*
+ops/release/*.env
+!ops/release/*template*.env

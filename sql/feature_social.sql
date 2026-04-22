@@ -11,33 +11,9 @@ SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
 
 -- ---------------------------------------------------------------------
--- 1) 扩展 user 表：社交互动控制字段
+-- 1) user / picture 的社交字段已并入 picture.sql 最新结构
+--    这里不再重复 ALTER，避免重复执行时报 Duplicate column/index 错误
 -- ---------------------------------------------------------------------
-ALTER TABLE `user`
-    ADD COLUMN allowPrivateChat  TINYINT      DEFAULT 1     NOT NULL COMMENT '是否允许被私聊：1-允许 0-禁止',
-    ADD COLUMN allowFollow       TINYINT      DEFAULT 1     NOT NULL COMMENT '是否允许被关注：1-允许 0-禁止',
-    ADD COLUMN showFollowList    TINYINT      DEFAULT 1     NOT NULL COMMENT '是否公开关注列表：1-展示 0-隐藏',
-    ADD COLUMN showFansList      TINYINT      DEFAULT 1     NOT NULL COMMENT '是否公开粉丝列表：1-展示 0-隐藏',
-    ADD COLUMN personalSign      VARCHAR(256) DEFAULT NULL      NULL COMMENT '个性签名',
-    ADD COLUMN lastActiveTime    DATETIME     DEFAULT NULL      NULL COMMENT '最后活跃时间';
-
--- ---------------------------------------------------------------------
--- 2) 扩展 picture 表：互动计数 + 互动开关 + 热榜分
--- ---------------------------------------------------------------------
-ALTER TABLE picture
-    ADD COLUMN likeCount     BIGINT  DEFAULT 0 NOT NULL COMMENT '点赞数（计数字段，以 like_record 为准）',
-    ADD COLUMN commentCount  BIGINT  DEFAULT 0 NOT NULL COMMENT '评论数',
-    ADD COLUMN favoriteCount BIGINT  DEFAULT 0 NOT NULL COMMENT '收藏数',
-    ADD COLUMN viewCount     BIGINT  DEFAULT 0 NOT NULL COMMENT '浏览量',
-    ADD COLUMN shareCount    BIGINT  DEFAULT 0 NOT NULL COMMENT '分享数',
-    ADD COLUMN allowLike     TINYINT DEFAULT 1 NOT NULL COMMENT '是否允许点赞：1-允许 0-禁止',
-    ADD COLUMN allowComment  TINYINT DEFAULT 1 NOT NULL COMMENT '是否允许评论：1-允许 0-禁止',
-    ADD COLUMN allowCollect  TINYINT DEFAULT 1 NOT NULL COMMENT '是否允许收藏：1-允许 0-禁止',
-    ADD COLUMN allowShare    TINYINT DEFAULT 1 NOT NULL COMMENT '是否允许分享：1-允许 0-禁止',
-    ADD COLUMN hotScore      DOUBLE  DEFAULT 0 NOT NULL COMMENT '热榜分数（定时任务更新）';
-
-CREATE INDEX idx_picture_hot_score  ON picture (hotScore DESC, createTime DESC);
-CREATE INDEX idx_picture_like_count ON picture (likeCount DESC, createTime DESC);
 
 -- =====================================================================
 -- 第一期：点赞 / 收藏 / 评论
