@@ -65,7 +65,8 @@ public class InteractionStreamConfig {
                 String, MapRecord<String, String, String>> options =
                 StreamMessageListenerContainer.StreamMessageListenerContainerOptions
                         .builder()
-                        .pollTimeout(Duration.ofSeconds(5))
+                        // Redis 默认命令超时通常为 5s，避免与阻塞读取等值导致边界超时
+                        .pollTimeout(Duration.ofSeconds(2))
                         .batchSize(16)
                         .build();
 

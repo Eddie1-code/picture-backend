@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="picture-frontend/public/favicon.svg" width="72" height="72" alt="Nestpic Logo" />
+<img src="picture-backend/photos/admin-avatar.png" width="72" height="72" alt="Nestpic Logo" />
 
 # 栖图 · Nestpic
 
@@ -8,6 +8,7 @@
 
 > 一款集个人创作、团队协作与社交互动于一体的云端图片平台。
 
+线上地址：[http://picture.xucanwei.xyz](http://picture.xucanwei.xyz)
 ![license](https://img.shields.io/badge/license-MIT-brightgreen)
 ![backend](https://img.shields.io/badge/backend-Spring%20Boot%202.7-green)
 ![frontend](https://img.shields.io/badge/frontend-Vue%203%20%2B%20Vite-42b883)

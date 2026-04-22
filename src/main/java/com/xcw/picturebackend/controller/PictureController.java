@@ -266,8 +266,26 @@ public class PictureController {
     @GetMapping("/tag_category")
     public BaseResponse<PictureTagCategory> listPictureTagCategory() {
         PictureTagCategory pictureTagCategory = new PictureTagCategory();
-        List<String> tagList = Arrays.asList("热门", "搞笑", "生活", "高清", "艺术", "校园", "背景", "简历", "创意");
-        List<String> categoryList = Arrays.asList("模板", "电商", "表情包", "素材", "海报");
+        List<String> tagList = Arrays.asList(
+                // 热门与质量
+                "热门", "精选", "高质量", "高清", "4K", "8K", "无水印", "可商用",
+                // 摄影题材
+                "人像", "证件照", "写真", "风景", "街拍", "旅行", "城市", "建筑", "自然", "美食", "宠物",
+                // 视觉风格
+                "极简", "高级感", "复古", "胶片", "黑白", "清新", "治愈", "中国风", "国潮", "赛博朋克", "插画风",
+                // 设计与运营常搜词
+                "海报", "banner", "封面", "主图", "详情页", "活动页", "电商", "促销", "新品", "直播",
+                "UI", "APP", "网页", "图标", "logo", "背景图", "壁纸", "透明背景", "免抠",
+                // 办公与内容创作
+                "PPT", "简历", "名片", "公众号", "小红书", "短视频", "头像", "表情包",
+                // 节日与场景
+                "节日", "春节", "元旦", "情人节", "中秋", "国庆", "毕业季", "校园", "科技", "办公"
+        );
+        List<String> categoryList = Arrays.asList(
+                "摄影作品", "AI创作", "商业设计", "电商设计", "社媒运营",
+                "海报KV", "插画绘画", "UI界面", "图标ICON", "壁纸背景",
+                "模板套件", "表情包", "素材库"
+        );
         pictureTagCategory.setTagList(tagList);
         pictureTagCategory.setCategoryList(categoryList);
         return ResultUtils.success(pictureTagCategory);
