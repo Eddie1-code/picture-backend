@@ -33,6 +33,7 @@ import com.xcw.picturebackend.service.FavoriteRecordService;
 import com.xcw.picturebackend.model.vo.PictureBatchFetchCandidateVO;
 import com.xcw.picturebackend.model.vo.PictureVO;
 import com.xcw.picturebackend.model.vo.UserVO;
+import com.xcw.picturebackend.service.NotifyService;
 import com.xcw.picturebackend.service.PictureService;
 import com.xcw.picturebackend.mapper.PictureMapper;
 import com.xcw.picturebackend.service.SpaceService;
@@ -46,6 +47,7 @@ import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -109,6 +111,22 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
     @org.springframework.context.annotation.Lazy
     private FavoriteRecordService favoriteRecordService;
 
+    @Resource
+    @org.springframework.context.annotation.Lazy
+    private NotifyService notifyService;
+
+    @Resource
+    private RateLimitManager rateLimitManager;
+
+    @Resource
+    private AiTaskTimeoutManager aiTaskTimeoutManager;
+
+    @Value("${aliYunAi.moderation.enabled:false}")
+    private boolean moderationEnabled;
+
+    @Value("${aliYunAi.moderation.auto-pass:false}")
+    private boolean moderationAutoPass;
+
 
     /**
      * 上传图片
@@ -124,6 +142,17 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
         ThrowUtils.throwIf(loginUser == null, ErrorCode.NO_AUTH_ERROR);
         // 校验空间是否存在
         Long spaceId = pictureUploadRequest.getSpaceId();
+        // 上传频率限制（仅公共图库，空间上传不限）
+        if (spaceId == null && !userService.isAdmin(loginUser)) {
+            boolean isVip = "vip".equals(loginUser.getUserRole());
+            int dailyLimit = isVip ? 200 : 50;
+            if (!rateLimitManager.checkRateLimit(loginUser.getId(), "picture:upload:rate:", 1, 1)) {
+                throw new BusinessException(ErrorCode.TOO_MANY_REQUEST, "上传过于频繁，请稍后再试");
+            }
+            if (!rateLimitManager.checkRateLimit(loginUser.getId(), "picture:upload:daily:", dailyLimit, 86400)) {
+                throw new BusinessException(ErrorCode.TOO_MANY_REQUEST, "今日上传次数已达上限，请明天再试");
+            }
+        }
         if (spaceId != null) {
             Space space = spaceService.getById(spaceId);
             ThrowUtils.throwIf(space == null, ErrorCode.NOT_FOUND_ERROR, "空间不存在");
@@ -200,8 +229,31 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
         picture.setPicFormat(uploadPictureResult.getPicFormat());
         picture.setPicColor(ColorTransformUtils.getStandardColor(uploadPictureResult.getPicColor()));
         picture.setUserId(loginUser.getId());
-        // 补充审核参数
-        this.fillReviewParams(picture, loginUser);
+        // 补充审核参数：AI 审核（仅对普通用户上传到公共图库的图片生效）
+        boolean autoReviewed = false;
+        if (!userService.isAdmin(loginUser) && spaceId == null && moderationEnabled) {
+            try {
+                String result = aliYunAiApi.moderateImage(picture.getUrl());
+                if ("block".equals(result)) {
+                    picture.setReviewStatus(PictureReviewStatusEnum.REJECT.getValue());
+                    picture.setReviewerId(0L);
+                    picture.setReviewMessage("AI审核拒绝：内容违规");
+                    picture.setReviewTime(new Date());
+                    autoReviewed = true;
+                } else if ("pass".equals(result) && moderationAutoPass) {
+                    picture.setReviewStatus(PictureReviewStatusEnum.PASS.getValue());
+                    picture.setReviewerId(0L);
+                    picture.setReviewMessage("AI审核通过");
+                    picture.setReviewTime(new Date());
+                    autoReviewed = true;
+                }
+            } catch (Exception e) {
+                log.warn("AI 审核调用失败，降级为人工审核: {}", e.getMessage());
+            }
+        }
+        if (!autoReviewed) {
+            this.fillReviewParams(picture, loginUser);
+        }
         //操作数据库
         // 如果 pictureId 不为空，表示更新，否则是新增
         if (pictureId != null) {
@@ -226,6 +278,24 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
             }
             return picture;
         });
+
+        // 普通用户上传到公共图库后，通知管理员审核
+        if (picture.getReviewStatus() != null && picture.getReviewStatus() == PictureReviewStatusEnum.REVIEWING.getValue()) {
+            try {
+                notifyService.sendSystemNotify(
+                        "SYSTEM",
+                        String.valueOf(loginUser.getId()),
+                        "ROLE",
+                        "admin",
+                        "新图片待审核",
+                        String.format("用户 %s 上传了「%s」，请及时审核。",
+                                loginUser.getUserName(), picture.getName()),
+                        "PICTURE",
+                        String.valueOf(picture.getId()));
+            } catch (Exception e) {
+                log.error("Failed to send review notification for picture {}", picture.getId(), e);
+            }
+        }
 
         return PictureVO.objToVo(picture);
     }
@@ -463,7 +533,7 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
         Picture oldPicture = this.getById(id);
         ThrowUtils.throwIf(oldPicture == null, ErrorCode.NOT_FOUND_ERROR);
         // 已是该状态
-        if (oldPicture.getReviewStatus().equals(reviewStatus)) {
+        if (reviewStatus.equals(oldPicture.getReviewStatus())) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "请勿重复审核");
         }
         // 更新审核状态
@@ -476,6 +546,34 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
         // 操作数据库
         boolean result = this.updateById(updatePicture);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
+
+        // 通知图片上传者审核结果
+        try {
+            Long ownerId = oldPicture.getUserId();
+            if (ownerId != null) {
+                String title;
+                String content;
+                if (reviewStatus.equals(PictureReviewStatusEnum.PASS.getValue())) {
+                    title = "图片审核通过";
+                    content = String.format("您的图片「%s」已通过审核，现已公开展示。", oldPicture.getName());
+                } else {
+                    title = "图片未通过审核";
+                    String reason = StrUtil.isNotBlank(pictureReviewRequest.getReviewMessage())
+                            ? "，原因：" + pictureReviewRequest.getReviewMessage() : "";
+                    content = String.format("您的图片「%s」未通过审核%s。", oldPicture.getName(), reason);
+                }
+                notifyService.sendSystemNotify(
+                        "SYSTEM",
+                        String.valueOf(loginUser.getId()),
+                        "SPECIFIC_USER",
+                        String.valueOf(ownerId),
+                        title, content,
+                        "PICTURE",
+                        String.valueOf(oldPicture.getId()));
+            }
+        } catch (Exception e) {
+            log.error("Failed to send review result notification for picture {}", id, e);
+        }
     }
 
     /**
@@ -492,8 +590,13 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
             picture.setReviewerId(loginUser.getId());
             picture.setReviewMessage("管理员自动过审");
             picture.setReviewTime(new Date());
+        } else if (picture.getSpaceId() != null) {
+            // 空间内图片由空间成员自行管理，无需审核
+            picture.setReviewStatus(PictureReviewStatusEnum.PASS.getValue());
+            picture.setReviewMessage("空间图片自动过审");
+            picture.setReviewTime(new Date());
         } else {
-            // 非管理员，创建或编辑都要改为待审核
+            // 非管理员上传到公共图库，需要审核
             picture.setReviewStatus(PictureReviewStatusEnum.REVIEWING.getValue());
         }
     }
@@ -680,8 +783,11 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
         ThrowUtils.throwIf(oldPicture == null, ErrorCode.NOT_FOUND_ERROR);
         // 校验权限，已经改为使用注解鉴权
         //checkPictureAuth(loginUser, oldPicture);
-        // 补充审核参数
-        this.fillReviewParams(picture, loginUser);
+        // 编辑元数据不改变审核状态，保留原有审核信息
+        picture.setReviewStatus(oldPicture.getReviewStatus());
+        picture.setReviewerId(oldPicture.getReviewerId());
+        picture.setReviewMessage(oldPicture.getReviewMessage());
+        picture.setReviewTime(oldPicture.getReviewTime());
         // 操作数据库
         boolean result = this.updateById(picture);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
@@ -795,13 +901,6 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
         boolean result = this.updateBatchById(pictureList);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
     }
-
-    // 在类顶部添加依赖注入
-    @Resource
-    private RateLimitManager rateLimitManager;
-
-    @Resource
-    private AiTaskTimeoutManager aiTaskTimeoutManager;
     
     @Override
     public CreateOutPaintingTaskResponse createPictureOutPaintingTask(CreatePictureOutPaintingTaskRequest createPictureOutPaintingTaskRequest, User loginUser) {

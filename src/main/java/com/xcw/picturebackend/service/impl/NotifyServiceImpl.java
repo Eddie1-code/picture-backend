@@ -314,6 +314,26 @@ public class NotifyServiceImpl implements NotifyService {
         }
     }
 
+    @Override
+    public void sendSystemNotify(String senderType, String senderId,
+                                 String receiverType, String receiverId,
+                                 String title, String content,
+                                 String relatedBizType, String relatedBizId) {
+        SystemNotify notify = new SystemNotify();
+        notify.setSenderType(senderType);
+        notify.setSenderId(senderId);
+        notify.setReceiverType(receiverType);
+        notify.setReceiverId(receiverId);
+        notify.setNotifyType(NotifyTypeEnum.SYSTEM.getValue());
+        notify.setTitle(title);
+        notify.setContent(content);
+        notify.setRelatedBizType(relatedBizType);
+        notify.setRelatedBizId(relatedBizId);
+        notify.setIsEnabled(1);
+        notify.setIsGlobal(0);
+        systemNotifyMapper.insert(notify);
+    }
+
     // --------------------- 点赞消息 ---------------------
     private IPage<NotifyItemVO> listLikeMessages(Long uid, long current, long size, boolean onlyUnread) {
         Page<LikeRecord> page = new Page<>(current, size);
@@ -471,10 +491,15 @@ public class NotifyServiceImpl implements NotifyService {
         LambdaQueryWrapper<SystemNotify> qw = new LambdaQueryWrapper<SystemNotify>()
                 .eq(SystemNotify::getIsEnabled, 1)
                 .eq(SystemNotify::getIsDelete, 0)
-                .and(w -> w
-                        .and(x -> x.eq(SystemNotify::getReceiverType, "SPECIFIC_USER").eq(SystemNotify::getReceiverId, uidStr))
-                        .or(x -> x.eq(SystemNotify::getReceiverType, "ALL_USER"))
-                        .or(x -> x.eq(SystemNotify::getReceiverType, "ROLE").eq(SystemNotify::getReceiverId, "user")))
+                .and(w -> {
+                    w.and(x -> x.eq(SystemNotify::getReceiverType, "SPECIFIC_USER").eq(SystemNotify::getReceiverId, uidStr))
+                     .or(x -> x.eq(SystemNotify::getReceiverType, "ALL_USER"))
+                     .or(x -> x.eq(SystemNotify::getReceiverType, "ROLE").eq(SystemNotify::getReceiverId, "user"));
+                    User user = userService.getById(uid);
+                    if (user != null && userService.isAdmin(user)) {
+                        w.or(x -> x.eq(SystemNotify::getReceiverType, "ROLE").eq(SystemNotify::getReceiverId, "admin"));
+                    }
+                })
                 .orderByDesc(SystemNotify::getCreateTime);
         systemNotifyMapper.selectPage(page, qw);
 
@@ -524,10 +549,15 @@ public class NotifyServiceImpl implements NotifyService {
                 .select(SystemNotify::getId)
                 .eq(SystemNotify::getIsEnabled, 1)
                 .eq(SystemNotify::getIsDelete, 0)
-                .and(w -> w
-                        .and(x -> x.eq(SystemNotify::getReceiverType, "SPECIFIC_USER").eq(SystemNotify::getReceiverId, uidStr))
-                        .or(x -> x.eq(SystemNotify::getReceiverType, "ALL_USER"))
-                        .or(x -> x.eq(SystemNotify::getReceiverType, "ROLE").eq(SystemNotify::getReceiverId, "user"))));
+                .and(w -> {
+                    w.and(x -> x.eq(SystemNotify::getReceiverType, "SPECIFIC_USER").eq(SystemNotify::getReceiverId, uidStr))
+                     .or(x -> x.eq(SystemNotify::getReceiverType, "ALL_USER"))
+                     .or(x -> x.eq(SystemNotify::getReceiverType, "ROLE").eq(SystemNotify::getReceiverId, "user"));
+                    User user = userService.getById(uid);
+                    if (user != null && userService.isAdmin(user)) {
+                        w.or(x -> x.eq(SystemNotify::getReceiverType, "ROLE").eq(SystemNotify::getReceiverId, "admin"));
+                    }
+                }));
         if (all.isEmpty()) return 0L;
         Set<Long> ids = all.stream().map(SystemNotify::getId).collect(Collectors.toSet());
         long readCount = userSystemNotifyReadMapper.selectCount(new LambdaQueryWrapper<UserSystemNotifyRead>()
@@ -565,10 +595,15 @@ public class NotifyServiceImpl implements NotifyService {
                 .select(SystemNotify::getId)
                 .eq(SystemNotify::getIsEnabled, 1)
                 .eq(SystemNotify::getIsDelete, 0)
-                .and(w -> w
-                        .and(x -> x.eq(SystemNotify::getReceiverType, "SPECIFIC_USER").eq(SystemNotify::getReceiverId, uidStr))
-                        .or(x -> x.eq(SystemNotify::getReceiverType, "ALL_USER"))
-                        .or(x -> x.eq(SystemNotify::getReceiverType, "ROLE").eq(SystemNotify::getReceiverId, "user"))));
+                .and(w -> {
+                    w.and(x -> x.eq(SystemNotify::getReceiverType, "SPECIFIC_USER").eq(SystemNotify::getReceiverId, uidStr))
+                     .or(x -> x.eq(SystemNotify::getReceiverType, "ALL_USER"))
+                     .or(x -> x.eq(SystemNotify::getReceiverType, "ROLE").eq(SystemNotify::getReceiverId, "user"));
+                    User user = userService.getById(uid);
+                    if (user != null && userService.isAdmin(user)) {
+                        w.or(x -> x.eq(SystemNotify::getReceiverType, "ROLE").eq(SystemNotify::getReceiverId, "admin"));
+                    }
+                }));
         for (SystemNotify n : all) {
             markSystemNotifyRead(uid, n.getId());
         }

@@ -27,4 +27,12 @@ public interface NotifyService {
      * 标记单条消息为已读
      */
     boolean markOneRead(String notifyType, Long bizId, User loginUser);
+
+    /**
+     * 发送一条系统通知
+     */
+    void sendSystemNotify(String senderType, String senderId,
+                          String receiverType, String receiverId,
+                          String title, String content,
+                          String relatedBizType, String relatedBizId);
 }

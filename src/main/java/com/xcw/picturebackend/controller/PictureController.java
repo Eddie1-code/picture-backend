@@ -218,9 +218,20 @@ public class PictureController {
         // 空间权限校验
         Long spaceId = pictureQueryRequest.getSpaceId();
         if (spaceId == null) {
-            // 公开的公共图库（即普通用户只能看到审核通过的数据）
-            pictureQueryRequest.setReviewStatus(PictureReviewStatusEnum.PASS.getValue());
             pictureQueryRequest.setNullSpaceId(true); // 只查询 spaceId 为 null 的图片
+            // 判断是否为用户本人查询：本人查询时不强制过滤审核状态，用户可以看到自己的待审核/已拒绝图片
+            User loginUser = null;
+            try {
+                loginUser = userService.getLoginUser(request);
+            } catch (Exception ignored) {
+            }
+            Long queryUserId = pictureQueryRequest.getUserId();
+            boolean isOwnQuery = loginUser != null && queryUserId != null
+                    && loginUser.getId().equals(queryUserId);
+            if (!isOwnQuery) {
+                // 公开的公共图库（即普通用户只能看到审核通过的数据）
+                pictureQueryRequest.setReviewStatus(PictureReviewStatusEnum.PASS.getValue());
+            }
         } else {
             boolean hasPermission = StpKit.SPACE.hasPermission(SpaceUserPermissionConstant.PICTURE_VIEW);
             ThrowUtils.throwIf(!hasPermission, ErrorCode.NO_AUTH_ERROR);
@@ -289,6 +300,19 @@ public class PictureController {
         pictureTagCategory.setTagList(tagList);
         pictureTagCategory.setCategoryList(categoryList);
         return ResultUtils.success(pictureTagCategory);
+    }
+
+    /**
+     * 获取待审核图片数量（管理员）
+     */
+    @GetMapping("/review/pending-count")
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
+    public BaseResponse<Long> getPendingReviewCount() {
+        long count = pictureService.lambdaQuery()
+                .eq(Picture::getReviewStatus, PictureReviewStatusEnum.REVIEWING.getValue())
+                .isNull(Picture::getSpaceId)
+                .count();
+        return ResultUtils.success(count);
     }
 
     /**
