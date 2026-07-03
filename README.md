@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="picture-backend/photos/admin-avatar.png" width="72" height="72" alt="Nestpic Logo" />
+<img src="photos/admin-avatar.png" width="72" height="72" alt="Nestpic Logo" />
 
 # 栖图 · Nestpic
 
@@ -8,7 +8,6 @@
 
 > 一款集个人创作、团队协作与社交互动于一体的云端图片平台。
 
-线上地址：[http://picture.xucanwei.xyz](http://picture.xucanwei.xyz)
 ![license](https://img.shields.io/badge/license-MIT-brightgreen)
 ![backend](https://img.shields.io/badge/backend-Spring%20Boot%202.7-green)
 ![frontend](https://img.shields.io/badge/frontend-Vue%203%20%2B%20Vite-42b883)
@@ -24,7 +23,8 @@
 
 ---
 
-## 📌 项目概述
+## 线上地址：[http://www.xucanwei.xyz](http://www.xucanwei.xyz) 
+##📌 项目概述
 
 **栖图 Nestpic** 是一款面向个人创作者与小型团队的云端图片平台。它既是图片的"栖息地"——负责上传、解析、检索、分享、权限管理；也是创作者的"社区"——提供关注、点赞、评论、收藏、私信、帖子（类"朋友圈"的图文动态）等完整社交能力。
 
