@@ -1,5 +1,7 @@
 package com.xcw.picturebackend.controller;
 
+import cn.hutool.captcha.CaptchaUtil;
+import cn.hutool.captcha.ShearCaptcha;
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.io.FileUtil;
@@ -25,6 +27,7 @@ import com.qcloud.cos.model.PutObjectResult;
 import com.qcloud.cos.model.ciModel.persistence.CIObject;
 import com.qcloud.cos.model.ciModel.persistence.ProcessResults;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -33,9 +36,12 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.File;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @RestController
@@ -53,6 +59,24 @@ public class UserController {
 
     @Resource
     private com.xcw.picturebackend.manager.social.UserOnlineManager userOnlineManager;
+
+    @Resource
+    private StringRedisTemplate stringRedisTemplate;
+
+    /**
+     * 获取图形验证码
+     */
+    @GetMapping("/captcha")
+    public BaseResponse<Map<String, String>> getCaptcha() {
+        ShearCaptcha captcha = CaptchaUtil.createShearCaptcha(120, 40, 4, 4);
+        String code = captcha.getCode();
+        String captchaId = UUID.randomUUID().toString();
+        stringRedisTemplate.opsForValue().set("captcha:" + captchaId, code, 120, TimeUnit.SECONDS);
+        Map<String, String> result = new HashMap<>();
+        result.put("captchaId", captchaId);
+        result.put("captchaImage", captcha.getImageBase64Data());
+        return ResultUtils.success(result);
+    }
 
     /**
      * 用户注册接口

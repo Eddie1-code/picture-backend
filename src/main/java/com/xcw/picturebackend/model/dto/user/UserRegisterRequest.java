@@ -41,4 +41,14 @@ public class UserRegisterRequest implements Serializable {
      * 头像 URL（可选；注册阶段可空，登录后在个人中心上传）
      */
     private String userAvatar;
+
+    /**
+     * 验证码ID（对应Redis key）
+     */
+    private String captchaId;
+
+    /**
+     * 用户输入的验证码
+     */
+    private String captchaCode;
 }

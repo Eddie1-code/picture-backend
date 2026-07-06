@@ -30,8 +30,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.util.DigestUtils;
+import org.mindrot.jbcrypt.BCrypt;
 
 import javax.servlet.http.HttpServletRequest;
 import java.io.IOException;
@@ -52,9 +53,26 @@ import java.util.stream.Collectors;
 public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         implements UserService {
 
+    @Autowired
+    private StringRedisTemplate stringRedisTemplate;
+
     @Override
     public long userRegister(UserRegisterRequest req) {
         ThrowUtils.throwIf(req == null, ErrorCode.PARAMS_ERROR, "参数为空");
+
+        // 0. 验证码校验
+        String captchaId = req.getCaptchaId();
+        String captchaCode = req.getCaptchaCode();
+        if (StrUtil.isBlank(captchaId) || StrUtil.isBlank(captchaCode)) {
+            throw new BusinessException(ErrorCode.CAPTCHA_ERROR, "请先完成验证码");
+        }
+        String redisKey = "captcha:" + captchaId;
+        String cachedCode = stringRedisTemplate.opsForValue().get(redisKey);
+        if (StrUtil.isBlank(cachedCode) || !cachedCode.equalsIgnoreCase(captchaCode)) {
+            throw new BusinessException(ErrorCode.CAPTCHA_ERROR, "验证码错误或已过期");
+        }
+        stringRedisTemplate.delete(redisKey);
+
         String userAccount = req.getUserAccount();
         String userPassword = req.getUserPassword();
         String checkPassword = req.getCheckPassword();
@@ -144,17 +162,12 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         ThrowUtils.throwIf(userAccount.length() < 4, ErrorCode.PARAMS_ERROR, "用户账号错误");
         ThrowUtils.throwIf(userPassword.length() < 8, ErrorCode.PARAMS_ERROR, "用户密码错误");
 
-        //2.对用户传递的密码进行加密
-        String encryptedPassword = getEncryptPassword(userPassword);
-
-        //3.查询数据库中的用户是否存在
+        //2.查询数据库中的用户是否存在
         QueryWrapper<User> queryWrapper = new QueryWrapper<>();
-        queryWrapper.eq("userAccount", userAccount)
-                .eq("userPassword", encryptedPassword);
+        queryWrapper.eq("userAccount", userAccount);
         User user = this.baseMapper.selectOne(queryWrapper);
-        if (user == null) {
+        if (user == null || !BCrypt.checkpw(userPassword, user.getUserPassword())) {
             log.info("user login failed, userAccount cannot match userPassword");
-            //用户不存在，抛异常
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户不存在或密码错误");
         }
 
@@ -173,9 +186,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
      */
     @Override
     public String getEncryptPassword(String userPassword) {
-        //加盐，混淆密码
-        final String SALT = "xcw";
-        return DigestUtils.md5DigestAsHex((SALT + userPassword).getBytes());
+        return BCrypt.hashpw(userPassword, BCrypt.gensalt());
     }
 
     /**
