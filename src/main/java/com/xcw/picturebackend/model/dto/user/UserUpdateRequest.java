@@ -33,6 +33,16 @@ public class UserUpdateRequest implements Serializable {
     private String userProfile;
 
     /**
+     * 邮箱
+     */
+    private String email;
+
+    /**
+     * 邮箱验证码（绑定时需要）
+     */
+    private String emailCode;
+
+    /**
      * 用户角色：user/admin
      */
     private String userRole;

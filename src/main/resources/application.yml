@@ -30,6 +30,23 @@ spring:
     store-type: redis
     # session 30 天过期
     timeout: 2592000
+  # 邮件配置（阿里云邮件推送 SMTP，需配置环境变量 MAIL_USERNAME / MAIL_PASSWORD）
+  mail:
+    host: smtpdm.aliyun.com
+    port: 465
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    protocol: smtps
+    default-encoding: UTF-8
+    properties:
+      mail:
+        smtp:
+          auth: true
+          ssl:
+            enable: true
+          starttls:
+            enable: true
+      from-name: 栖图
   #开放更大的文件上传体积
   servlet:
     multipart:
@@ -115,3 +132,14 @@ security:
         - /api/picture/upload
         - /api/post/add
         - /api/comment/add
+
+# 应用级配置
+app:
+  password-reset:
+    token-expire-minutes: 15
+    # 前端地址，用于拼接重置链接
+    frontend-url: ${FRONTEND_URL:http://localhost:5173}
+  email:
+    rate-limit:
+      send-per-ip-per-hour: 5
+      verify-per-account-per-day: 5

@@ -5,6 +5,7 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.ObjUtil;
+import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONUtil;
@@ -14,6 +15,7 @@ import com.xcw.picturebackend.constant.UserConstant;
 import com.xcw.picturebackend.exception.BusinessException;
 import com.xcw.picturebackend.exception.ErrorCode;
 import com.xcw.picturebackend.exception.ThrowUtils;
+import com.xcw.picturebackend.manager.RateLimitManager;
 import com.xcw.picturebackend.manager.auth.StpKit;
 import com.xcw.picturebackend.model.dto.user.UserPrivacyUpdateRequest;
 import com.xcw.picturebackend.model.dto.user.UserQueryRequest;
@@ -24,10 +26,14 @@ import com.xcw.picturebackend.model.dto.user.VipCode;
 import com.xcw.picturebackend.model.enums.UserRoleEnum;
 import com.xcw.picturebackend.model.vo.LoginUserVO;
 import com.xcw.picturebackend.model.vo.UserVO;
+import com.xcw.picturebackend.service.EmailService;
+import com.xcw.picturebackend.service.NotifyService;
 import com.xcw.picturebackend.service.UserService;
 import com.xcw.picturebackend.mapper.UserMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -40,6 +46,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
@@ -55,6 +63,22 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
 
     @Autowired
     private StringRedisTemplate stringRedisTemplate;
+
+    @Autowired
+    private EmailService emailService;
+
+    @Lazy
+    @Autowired
+    private NotifyService notifyService;
+
+    @Autowired
+    private RateLimitManager rateLimitManager;
+
+    @Value("${app.password-reset.token-expire-minutes:15}")
+    private int resetTokenExpireMinutes;
+
+    @Value("${app.password-reset.frontend-url:http://localhost:5173}")
+    private String frontendUrl;
 
     @Override
     public long userRegister(UserRegisterRequest req) {
@@ -78,6 +102,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         String checkPassword = req.getCheckPassword();
         String userProfile = req.getUserProfile();
         String userAvatar = req.getUserAvatar();
+        String email = StrUtil.trim(req.getEmail());
+        String emailCode = StrUtil.trim(req.getEmailCode());
 
         //1.校验参数
         if (StrUtil.hasBlank(userAccount, userPassword, checkPassword)) {
@@ -119,6 +145,19 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         //3.密码一定要加盐加密
         String encryptedPassword = getEncryptPassword(userPassword);
 
+        // 3.5 如果提供了邮箱，存储邮箱（注册时不强制验证，后续可在个人中心验证绑定）
+        if (StrUtil.isNotBlank(email)) {
+            if (!email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$")) {
+                throw new BusinessException(ErrorCode.PARAMS_ERROR, "邮箱格式不正确");
+            }
+            // 检查邮箱是否已被其他账号使用
+            QueryWrapper<User> emailQw = new QueryWrapper<>();
+            emailQw.eq("email", email);
+            if (this.count(emailQw) > 0) {
+                throw new BusinessException(ErrorCode.PARAMS_ERROR, "该邮箱已被其他账号绑定");
+            }
+        }
+
         //4.将用户信息存入数据库
         User user = new User();
         user.setUserAccount(userAccount);
@@ -130,6 +169,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         if (StrUtil.isNotBlank(userAvatar)) {
             user.setUserAvatar(userAvatar.trim());
         }
+        if (StrUtil.isNotBlank(email)) {
+            user.setEmail(email);
+        }
         user.setUserRole(UserRoleEnum.USER.getValue()); //默认用户角色
         boolean saveResult = this.save(user);
         /**
@@ -140,7 +182,45 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
          */
         ThrowUtils.throwIf(!saveResult, ErrorCode.SYSTEM_ERROR, "用户注册失败");
 
+        // 注册成功，发送系统通知引导完善信息
+        notifyService.sendSystemNotify(
+                "system", "0",
+                "SPECIFIC_USER", String.valueOf(user.getId()),
+                "欢迎加入栖图",
+                "注册成功！建议您完善个人信息：上传头像、绑定邮箱，方便找回密码，让您的账号更安全。",
+                "register", String.valueOf(user.getId())
+        );
+
         return user.getId(); //返回新用户的ID
+    }
+
+    /**
+     * 信息不完善时发送温柔提醒（每 7 天最多一次）
+     */
+    private void remindProfileCompletion(User user) {
+        boolean noEmail = StrUtil.isBlank(user.getEmail());
+        boolean noAvatar = StrUtil.isBlank(user.getUserAvatar());
+        if (!noEmail && !noAvatar) return; // 信息完整，无需提醒
+
+        String rateKey = "profile_remind:" + user.getId();
+        if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(rateKey))) return;
+
+        String missing;
+        if (noEmail && noAvatar) {
+            missing = "头像和邮箱";
+        } else if (noEmail) {
+            missing = "邮箱（可用于找回密码）";
+        } else {
+            missing = "头像";
+        }
+        notifyService.sendSystemNotify(
+                "system", "0",
+                "SPECIFIC_USER", String.valueOf(user.getId()),
+                "完善您的个人信息",
+                "检测到您还未设置" + missing + "，建议前往「个人中心」完善，获得更完整的体验。",
+                "profile_remind", String.valueOf(user.getId())
+        );
+        stringRedisTemplate.opsForValue().set(rateKey, "1", 7, TimeUnit.DAYS);
     }
 
 
@@ -174,12 +254,17 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         //4. 记录用户登录态到 Sa-Token（会话数据存 Redis）
         StpKit.SPACE.login(user.getId());
         StpKit.SPACE.getSession().set(UserConstant.USER_LOGIN_STATE, user);
+
+        //5. 信息不完善时，温柔提醒（每 7 天最多一次）
+        remindProfileCompletion(user);
+
         return this.getLoginUserVO(user); //返回登录用户信息对象
     }
 
 
     /**
-     * 加密用户密码
+     * 加
+     * 密用户密码
      *
      * @param userPassword 用户密码
      * @return 加密后的密码
@@ -514,6 +599,178 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
     private static Integer normalizeBit(Integer v) {
         if (v == null) return null;
         return v != 0 ? 1 : 0;
+    }
+
+    // ========== 邮箱绑定 ==========
+
+    @Override
+    public void sendEmailCode(Long userId, String email) {
+        if (StrUtil.isBlank(email) || !email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$")) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "邮箱格式不正确");
+        }
+        // 检查邮箱是否已被其他账号绑定
+        QueryWrapper<User> qw = new QueryWrapper<>();
+        qw.eq("email", email);
+        qw.ne("id", userId);
+        if (this.count(qw) > 0) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "该邮箱已被其他账号绑定");
+        }
+        // 限流：同一邮箱每天 5 次
+        String rateLimitKey = "email:code:limit:" + email;
+        String countStr = stringRedisTemplate.opsForValue().get(rateLimitKey);
+        int count = countStr == null ? 0 : Integer.parseInt(countStr);
+        if (count >= 5) {
+            throw new BusinessException(ErrorCode.TOO_MANY_REQUEST, "该邮箱今日验证码次数已用完");
+        }
+        String code = RandomUtil.randomNumbers(6);
+        String codeKey = "email:code:" + email;
+        stringRedisTemplate.opsForValue().set(codeKey, code, 5, TimeUnit.MINUTES);
+        stringRedisTemplate.opsForValue().set(rateLimitKey, String.valueOf(count + 1), 24, TimeUnit.HOURS);
+        emailService.sendVerificationCode(email, code);
+    }
+
+    @Override
+    public void bindEmail(Long userId, String email, String code) {
+        if (StrUtil.isBlank(email) || StrUtil.isBlank(code)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "参数为空");
+        }
+        if (!email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$")) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "邮箱格式不正确");
+        }
+        String codeKey = "email:code:" + email;
+        String cachedCode = stringRedisTemplate.opsForValue().get(codeKey);
+        if (StrUtil.isBlank(cachedCode) || !cachedCode.equals(code)) {
+            throw new BusinessException(ErrorCode.CAPTCHA_ERROR, "邮箱验证码错误或已过期");
+        }
+        stringRedisTemplate.delete(codeKey);
+        // 检查邮箱是否已被其他账号绑定
+        QueryWrapper<User> qw = new QueryWrapper<>();
+        qw.eq("email", email);
+        qw.ne("id", userId);
+        if (this.count(qw) > 0) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "该邮箱已被其他账号绑定");
+        }
+        User update = new User();
+        update.setId(userId);
+        update.setEmail(email);
+        this.updateById(update);
+    }
+
+    // ========== 忘记密码 ==========
+
+    @Override
+    public void sendPasswordResetEmail(String userAccount, String captchaId, String captchaCode) {
+        if (StrUtil.isBlank(userAccount)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "请输入账号");
+        }
+        // 图形验证码校验
+        if (StrUtil.isBlank(captchaId) || StrUtil.isBlank(captchaCode)) {
+            throw new BusinessException(ErrorCode.CAPTCHA_ERROR, "请先完成验证码");
+        }
+        String captchaKey = "captcha:" + captchaId;
+        String cached = stringRedisTemplate.opsForValue().get(captchaKey);
+        if (StrUtil.isBlank(cached) || !cached.equalsIgnoreCase(captchaCode)) {
+            throw new BusinessException(ErrorCode.CAPTCHA_ERROR, "验证码错误或已过期");
+        }
+        stringRedisTemplate.delete(captchaKey);
+        // 查找用户
+        QueryWrapper<User> qw = new QueryWrapper<>();
+        qw.eq("userAccount", userAccount);
+        User user = this.getOne(qw);
+        if (user == null) {
+            // 不泄露用户是否存在，统一提示
+            log.info("密码重置请求：账号 {} 不存在", userAccount);
+            return;
+        }
+        if (StrUtil.isBlank(user.getEmail())) {
+            throw new BusinessException(ErrorCode.OPERATION_ERROR, "该账号未绑定邮箱，请联系管理员重置密码");
+        }
+        // 限流：单账号每天 5 次
+        if (!rateLimitManager.checkRateLimit(user.getId(), "pwd_reset:account:", 5, 86400)) {
+            throw new BusinessException(ErrorCode.TOO_MANY_REQUEST, "密码重置请求过于频繁，请明天再试");
+        }
+        // 生成令牌
+        String token = UUID.randomUUID().toString().replace("-", "");
+        String tokenKey = "pwd_reset:token:" + token;
+        stringRedisTemplate.opsForValue().set(tokenKey, String.valueOf(user.getId()),
+                resetTokenExpireMinutes, TimeUnit.MINUTES);
+        String resetUrl = frontendUrl + "/user/reset-password?token=" + token;
+        emailService.sendPasswordResetLink(user.getEmail(), resetUrl);
+    }
+
+    @Override
+    public void resetPassword(String token, String newPassword, String checkPassword) {
+        if (StrUtil.isBlank(token)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "无效的重置链接");
+        }
+        if (StrUtil.isBlank(newPassword)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "请输入新密码");
+        }
+        if (newPassword.length() < 8) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "密码长度不能小于 8");
+        }
+        if (!newPassword.equals(checkPassword)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "两次密码不一致");
+        }
+        // 验证令牌
+        String tokenKey = "pwd_reset:token:" + token;
+        String userIdStr = stringRedisTemplate.opsForValue().get(tokenKey);
+        if (StrUtil.isBlank(userIdStr)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "重置链接已过期，请重新获取");
+        }
+        // 消费令牌（一次性）
+        stringRedisTemplate.delete(tokenKey);
+        long userId = Long.parseLong(userIdStr);
+        User user = this.getById(userId);
+        if (user == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "用户不存在");
+        }
+        // 更新密码
+        User update = new User();
+        update.setId(userId);
+        update.setUserPassword(getEncryptPassword(newPassword));
+        this.updateById(update);
+        // 清除该用户所有会话
+        StpKit.SPACE.logout(userId);
+        // 发送通知邮件
+        if (StrUtil.isNotBlank(user.getEmail())) {
+            try {
+                emailService.sendPasswordResetNotice(user.getEmail());
+            } catch (Exception e) {
+                log.warn("发送密码重置通知失败: {}", e.getMessage());
+            }
+        }
+    }
+
+    // ========== 修改密码 ==========
+
+    @Override
+    public void changePassword(Long userId, String oldPassword, String newPassword, String checkPassword) {
+        if (StrUtil.hasBlank(oldPassword, newPassword, checkPassword)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "参数不能为空");
+        }
+        if (newPassword.length() < 8) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "新密码长度不能小于 8");
+        }
+        if (!newPassword.equals(checkPassword)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "两次密码不一致");
+        }
+        if (oldPassword.equals(newPassword)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "新密码不能与旧密码相同");
+        }
+        User user = this.getById(userId);
+        if (user == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "用户不存在");
+        }
+        if (!BCrypt.checkpw(oldPassword, user.getUserPassword())) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "旧密码错误");
+        }
+        User update = new User();
+        update.setId(userId);
+        update.setUserPassword(getEncryptPassword(newPassword));
+        this.updateById(update);
+        // 清除其他会话，保留当前
+        StpKit.SPACE.logout(userId);
     }
 }
 

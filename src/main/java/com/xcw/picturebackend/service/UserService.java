@@ -125,4 +125,29 @@ public interface UserService extends IService<User> {
      * 当前登录用户的隐私开关更新：null 字段保持不变。
      */
     UserVO updateMyPrivacy(UserPrivacyUpdateRequest request, HttpServletRequest servletRequest);
+
+    /**
+     * 发送邮箱验证码（用于绑定邮箱）
+     */
+    void sendEmailCode(Long userId, String email);
+
+    /**
+     * 绑定邮箱（验证码校验后）
+     */
+    void bindEmail(Long userId, String email, String code);
+
+    /**
+     * 忘记密码 - 发送重置邮件
+     */
+    void sendPasswordResetEmail(String userAccount, String captchaId, String captchaCode);
+
+    /**
+     * 忘记密码 - 执行重置
+     */
+    void resetPassword(String token, String newPassword, String checkPassword);
+
+    /**
+     * 已登录用户修改密码
+     */
+    void changePassword(Long userId, String oldPassword, String newPassword, String checkPassword);
 }

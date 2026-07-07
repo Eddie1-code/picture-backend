@@ -51,4 +51,14 @@ public class UserRegisterRequest implements Serializable {
      * 用户输入的验证码
      */
     private String captchaCode;
+
+    /**
+     * 邮箱（可选绑定）
+     */
+    private String email;
+
+    /**
+     * 邮箱验证码
+     */
+    private String emailCode;
 }

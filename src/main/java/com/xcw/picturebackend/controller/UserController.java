@@ -17,7 +17,9 @@ import com.xcw.picturebackend.exception.BusinessException;
 import com.xcw.picturebackend.exception.ErrorCode;
 import com.xcw.picturebackend.exception.ThrowUtils;
 import com.xcw.picturebackend.manager.CosManager;
+import com.xcw.picturebackend.manager.RateLimitManager;
 import com.xcw.picturebackend.model.dto.user.*;
+
 import com.xcw.picturebackend.model.entity.User;
 import com.xcw.picturebackend.model.vo.LoginUserVO;
 import com.xcw.picturebackend.model.vo.UserVO;
@@ -62,6 +64,12 @@ public class UserController {
 
     @Resource
     private StringRedisTemplate stringRedisTemplate;
+
+    @Resource
+    private RateLimitManager rateLimitManager;
+
+    @Resource
+    private com.xcw.picturebackend.security.RequestIpResolver requestIpResolver;
 
     /**
      * 获取图形验证码
@@ -366,6 +374,82 @@ public class UserController {
                 file.delete();
             }
         }
+    }
+
+    // ========== 邮箱绑定 ==========
+
+    /**
+     * 发送邮箱验证码
+     */
+    @PostMapping("/email/code")
+    public BaseResponse<Boolean> sendEmailCode(@RequestBody UserUpdateRequest req, HttpServletRequest request) {
+        ThrowUtils.throwIf(req == null || StrUtil.isBlank(req.getEmail()), ErrorCode.PARAMS_ERROR, "邮箱不能为空");
+        User loginUser = userService.getLoginUser(request);
+        userService.sendEmailCode(loginUser.getId(), req.getEmail());
+        return ResultUtils.success(true);
+    }
+
+    /**
+     * 绑定邮箱
+     */
+    @PostMapping("/email/bind")
+    public BaseResponse<Boolean> bindEmail(@RequestBody UserUpdateRequest req, HttpServletRequest request) {
+        ThrowUtils.throwIf(req == null, ErrorCode.PARAMS_ERROR);
+        User loginUser = userService.getLoginUser(request);
+        userService.bindEmail(loginUser.getId(), req.getEmail(), req.getEmailCode());
+        return ResultUtils.success(true);
+    }
+
+    // ========== 忘记密码 ==========
+
+    /**
+     * 忘记密码 - 请求发送重置邮件
+     */
+    @PostMapping("/password/reset-request")
+    public BaseResponse<Boolean> requestPasswordReset(@RequestBody PasswordResetRequest req,
+                                                       HttpServletRequest request) {
+        ThrowUtils.throwIf(req == null, ErrorCode.PARAMS_ERROR);
+        // IP 限流：单 IP 每小时 10 次
+        String clientIp = requestIpResolver.resolveClientIp(request);
+        RateLimitManager.RateLimitDecision ipCheck =
+                rateLimitManager.checkRouteUserIpRateLimit("pwd_reset_req", null, clientIp, 10, 3600, false);
+        if (!ipCheck.isAllowed()) {
+            throw new BusinessException(ErrorCode.TOO_MANY_REQUEST, "操作过于频繁，请稍后再试");
+        }
+        userService.sendPasswordResetEmail(req.getUserAccount(), req.getCaptchaId(), req.getCaptchaCode());
+        // 不管账号是否存在，统一返回成功（防账号枚举）
+        return ResultUtils.success(true);
+    }
+
+    /**
+     * 忘记密码 - 执行重置
+     */
+    @PostMapping("/password/reset")
+    public BaseResponse<Boolean> executePasswordReset(@RequestBody PasswordResetExecuteRequest req,
+                                                       HttpServletRequest request) {
+        ThrowUtils.throwIf(req == null, ErrorCode.PARAMS_ERROR);
+        // IP 限流：单 IP 每分钟 5 次（防 token 暴力尝试）
+        String clientIp = requestIpResolver.resolveClientIp(request);
+        RateLimitManager.RateLimitDecision ipCheck =
+                rateLimitManager.checkRouteUserIpRateLimit("pwd_reset_exec", null, clientIp, 5, 60, false);
+        if (!ipCheck.isAllowed()) {
+            throw new BusinessException(ErrorCode.TOO_MANY_REQUEST, "操作过于频繁，请稍后再试");
+        }
+        userService.resetPassword(req.getToken(), req.getNewPassword(), req.getCheckPassword());
+        return ResultUtils.success(true);
+    }
+
+    // ========== 修改密码 ==========
+
+    /**
+     * 已登录用户修改密码
+     */
+    @PostMapping("/password/change")
+    public BaseResponse<Boolean> changePassword(@RequestBody ChangePasswordRequest req, HttpServletRequest request) {
+        ThrowUtils.throwIf(req == null, ErrorCode.PARAMS_ERROR);
+        User loginUser = userService.getLoginUser(request);
+        userService.changePassword(loginUser.getId(), req.getOldPassword(), req.getNewPassword(), req.getCheckPassword());
+        return ResultUtils.success(true);
     }
 
     /**
