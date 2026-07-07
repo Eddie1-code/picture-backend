@@ -5,6 +5,8 @@
 
 一款面向创作者的图片平台，打通图片管理、团队空间与社交互动。
 
+> 线上地址：[www.xucanwei.xyz](https://www.xucanwei.xyz)
+
 ![license](https://img.shields.io/badge/license-MIT-brightgreen)
 ![backend](https://img.shields.io/badge/Spring%20Boot-2.7.6-green)
 ![java](https://img.shields.io/badge/Java-17-orange)
@@ -121,8 +123,6 @@ picture/
 - 数据分析：空间使用量、分类分布、标签词云、成员活跃度等看板。
 - 热度排行：基于定时任务计算图片热榜。
 
-![图片与空间模块截图（待补）](docs/images/feature-picture-space.svg)
-
 ### 2) 账号与社交
 
 - 用户体系：注册、登录（Sa-Token）、个人资料编辑、头像上传。
@@ -133,8 +133,6 @@ picture/
 - 消息触达：互动消息聚合通知，未读计数基于 Redis Hash 统一管理。
 - 在线状态：基于 Redis TTL 心跳维护在线态。
 
-![账号与社交模块截图（待补）](docs/images/feature-social.svg)
-
 ### 3) 社区与动态
 
 - 动态发布：图文帖子（1~9 张图），支持编辑与删除。
@@ -143,16 +141,12 @@ picture/
 - 内容审核：帖子发布后进入审核流程。
 - 互动闭环：帖子支持点赞、收藏、评论，互动计入热度。
 
-![社区与动态模块截图（待补）](docs/images/feature-community.svg)
-
 ### 4) 私信与消息中心
 
 - 私信会话：文本 / 图片消息，消息状态追踪，客户端去重。
 - 消息中心：点赞、评论、收藏、关注、系统通知统一聚合。
 - 未读计数：Redis Hash 聚合多类型未读，支持按类型查询。
 - 事件驱动：Redis Stream 异步消费互动事件，更新热榜与未读。
-
-![私信与消息中心截图（待补）](docs/images/feature-chat-notify.svg)
 
 ---
 
